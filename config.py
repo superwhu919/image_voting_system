@@ -2,52 +2,60 @@ import os
 from pathlib import Path
 from huggingface_hub import snapshot_download
 
-# -----------------------------
-# Detect environment
-# -----------------------------
+# =============================
+# Environment
+# =============================
 ON_HF = bool(os.getenv("SPACE_ID")) or os.getenv("SYSTEM") == "spaces"
-
-# -----------------------------
-# Base directory
-# -----------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-if ON_HF:
-    # Download private HF dataset
-    DATA_DIR = Path(snapshot_download(
-        repo_id="superwhu919/tangshi-data",
-        repo_type="dataset"
-    ))
+# =============================
+# HF private dataset
+# =============================
+def download_dataset() -> Path:
+    token = os.getenv("Token")  # HF Space secret (case-sensitive)
+    if not token:
+        raise RuntimeError(
+            "HF Space secret 'Token' not found. "
+            "Add it in Space Settings → Secrets and restart the Space."
+        )
 
-    ROOT_ABS   = DATA_DIR
+    return Path(
+        snapshot_download(
+            repo_id="superwhu919/tangshi-data",
+            repo_type="dataset",
+            revision="main",
+            token=token,
+        )
+    )
+
+# =============================
+# Data paths
+# =============================
+if ON_HF:
+    DATA_DIR = download_dataset()
+    ROOT_ABS = DATA_DIR
     ROOT_DIR_A = DATA_DIR / "gpt"
     ROOT_DIR_B = DATA_DIR / "Nano"
-    XLSX_PATH  = DATA_DIR / "tangshi_300_unique_name.xlsx"
+    XLSX_PATH = DATA_DIR / "tangshi_300_unique_name.xlsx"
 else:
-    # Local Mac paths
-    ROOT_DIR_A = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready/gpt")
-    ROOT_DIR_B = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready/Nano")
-    ROOT_ABS   = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready")
-    XLSX_PATH  = BASE_DIR / "tangshi_sub1.xlsx"
+    ROOT_ABS = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready")
+    ROOT_DIR_A = ROOT_ABS / "gpt"
+    ROOT_DIR_B = ROOT_ABS / "Nano"
+    XLSX_PATH = BASE_DIR / "tangshi_sub1.xlsx"
 
-# -----------------------------
-# Output / persistence paths
-# -----------------------------
-if ON_HF:
-    # Use persistent storage if enabled; otherwise repo root
-    VOTES_CSV = Path("/data/votes.csv") if Path("/data").exists() else BASE_DIR / "votes.csv"
-    DB_PATH   = Path("/data/votes.db")  if Path("/data").exists() else BASE_DIR / "votes.db"
-else:
-    VOTES_CSV = BASE_DIR / "votes.csv"
-    DB_PATH   = BASE_DIR / "votes.db"
+# =============================
+# Persistence (no /data on Space)
+# =============================
+PERSIST_DIR = BASE_DIR
+VOTES_CSV = PERSIST_DIR / "votes.csv"
+DB_PATH = PERSIST_DIR / "votes.db"
 
-# -----------------------------------
-# Settings
-# -----------------------------------
+# =============================
+# App settings
+# =============================
 MAX_PER_USER = 10
 CSV_ENCODING = "utf-8-sig"
 
-
-# config.py
+# Image naming
 A_SUFFIX = ".png"
 B_SUFFIX = "_nano3_1.png"
