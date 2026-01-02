@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from huggingface_hub import snapshot_download
 
 # -----------------------------
 # Detect environment
@@ -12,11 +13,16 @@ ON_HF = bool(os.getenv("SPACE_ID")) or os.getenv("SYSTEM") == "spaces"
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 if ON_HF:
-    # HF Space: images must live inside repo or /data
-    ROOT_ABS = BASE_DIR / "imgs"
-    ROOT_DIR_A = ROOT_ABS / "gpt"
-    ROOT_DIR_B = ROOT_ABS / "nano"
-    XLSX_PATH = BASE_DIR / "tangshi_sub1.xlsx"
+    # Download private HF dataset
+    DATA_DIR = Path(snapshot_download(
+        repo_id="superwhu919/tangshi-data",
+        repo_type="dataset"
+    ))
+
+    ROOT_ABS   = DATA_DIR
+    ROOT_DIR_A = DATA_DIR / "gpt"
+    ROOT_DIR_B = DATA_DIR / "Nano"
+    XLSX_PATH  = DATA_DIR / "tangshi_300_unique_name.xlsx"
 else:
     # Local Mac paths
     ROOT_DIR_A = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready/gpt")
