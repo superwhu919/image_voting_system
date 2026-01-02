@@ -3,8 +3,7 @@ import time
 import gradio as gr
 import os, base64
 
-
-from config import ROOT_ABS, VOTES_CSV
+from config import ROOT_ABS, VOTES_CSV, ON_HF
 from operating_logic import (
     start_session,
     submit_choice,
@@ -237,4 +236,8 @@ with gr.Blocks(css=CSS, title="Image Preference Voting") as demo:
         ],
     )
 
-demo.launch(share=True, allowed_paths=[ROOT_ABS])
+if __name__ == "__main__":
+    if ON_HF:
+        demo.launch(server_name="0.0.0.0", server_port=7860)
+    else:
+        demo.launch(share=True, allowed_paths=[str(ROOT_ABS)])

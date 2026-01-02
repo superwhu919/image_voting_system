@@ -17,12 +17,19 @@ def remaining(uid: str) -> int:
 
 
 def random_pair():
-    """Pick a random poem and two distinct images under it."""
-    poem_title = random.choice(list(CATALOG.keys()))
-    left, right = random.sample(CATALOG[poem_title], 2)
+    """Pick a random poem and its paired images (A vs B)."""
+    keys = list(CATALOG.keys())
+    if not keys:
+        raise RuntimeError("CATALOG is empty (no valid A/B pairs found).")
+
+    poem_title = random.choice(keys)
+    pair = CATALOG[poem_title]          # {"a": pathA, "b": pathB}
+    left, right = pair["a"], pair["b"]
+
     if random.random() < 0.5:
         left, right = right, left
     return poem_title, left, right
+
 
 
 def next_pair():
