@@ -8,11 +8,15 @@ from flush import maybe_flush
 WRITE_LOCK = threading.Lock()
 
 def db_connect():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL;")
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30)
+
+    # ✅ Option A: single-file DB snapshot (best for HF upload)
+    conn.execute("PRAGMA journal_mode=DELETE;")
     conn.execute("PRAGMA synchronous=NORMAL;")
     conn.execute("PRAGMA busy_timeout=30000;")
-    conn.execute("""CREATE TABLE IF NOT EXISTS votes(
+
+    conn.execute("""
+    CREATE TABLE IF NOT EXISTS votes(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ts TEXT, user_id TEXT, poem TEXT,
         left_path TEXT, right_path TEXT,
@@ -38,6 +42,5 @@ def write_vote(uid, poem_title, left, right, choice, preferred, response_ms):
             (ts, uid, poem_title, left, right, choice, preferred, response_ms),
         )
         DB.commit()
-        maybe_flush()   # ← ADD HERE (after commit)
-
+        maybe_flush()
     return ts
