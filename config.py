@@ -6,7 +6,7 @@ from huggingface_hub import snapshot_download
 # Environment
 # =============================
 ON_HF = bool(os.getenv("SPACE_ID")) or os.getenv("SYSTEM") == "spaces"
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent
 
 # =============================
 # HF private dataset
@@ -47,6 +47,7 @@ else:
 # Persistence (no /data on Space)
 # =============================
 PERSIST_DIR = BASE_DIR
+PERSIST_DIR.mkdir(parents=True, exist_ok=True)
 VOTES_CSV = PERSIST_DIR / "votes.csv"
 DB_PATH = PERSIST_DIR / "votes.db"
 

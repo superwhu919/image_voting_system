@@ -3,6 +3,7 @@ import sqlite3
 import threading
 from datetime import datetime
 from config import DB_PATH
+from flush import maybe_flush
 
 WRITE_LOCK = threading.Lock()
 
@@ -37,4 +38,6 @@ def write_vote(uid, poem_title, left, right, choice, preferred, response_ms):
             (ts, uid, poem_title, left, right, choice, preferred, response_ms),
         )
         DB.commit()
+        maybe_flush()   # ← ADD HERE (after commit)
+
     return ts
