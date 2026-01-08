@@ -1,0 +1,102 @@
+{
+  "q2": {
+    "id": "q2",
+    "title": "Q2. 主要主体存在性",
+    "question": "诗中明确命名的主要主体是否在图像中可见？",
+    "options": [
+      {"value": "Present", "label": "存在"},
+      {"value": "Absent", "label": "不存在"},
+      {"value": "Ambiguous", "label": "模糊"}
+    ]
+  },
+  "q3": {
+    "id": "q3",
+    "title": "Q3. 关键元素数量",
+    "question": "如果诗中指定了数量，图像是否尊重该数量？",
+    "options": [
+      {"value": "Correct quantity", "label": "数量正确"},
+      {"value": "Incorrect quantity", "label": "数量错误"},
+      {"value": "Not applicable", "label": "不适用"}
+    ]
+  },
+  "q4": {
+    "id": "q4",
+    "title": "Q4. 属性一致性",
+    "question": "主体的视觉属性是否与诗中的描述匹配？",
+    "options": [
+      {"value": "Consistent", "label": "一致"},
+      {"value": "Contradictory", "label": "矛盾"},
+      {"value": "Unspecified in text", "label": "文本中未指定"}
+    ]
+  },
+  "q5": {
+    "id": "q5",
+    "title": "Q5. 动作/状态对齐",
+    "question": "主体是否以诗中描述的动作或状态被描绘？",
+    "options": [
+      {"value": "Aligned", "label": "对齐"},
+      {"value": "Misaligned", "label": "不对齐"},
+      {"value": "Static or ambiguous", "label": "静态或模糊"}
+    ]
+  },
+  "q6": {
+    "id": "q6",
+    "title": "Q6. 环境设置",
+    "question": "整体设置是否与诗中的位置或上下文匹配？",
+    "options": [
+      {"value": "Match", "label": "匹配"},
+      {"value": "Mismatch", "label": "不匹配"},
+      {"value": "Vague / indeterminate", "label": "模糊/不确定"}
+    ]
+  },
+  "q7": {
+    "id": "q7",
+    "title": "Q7. 季节与时间逻辑",
+    "question": "如果暗示了时间或季节，图像是否反映了它？",
+    "options": [
+      {"value": "Logical", "label": "符合逻辑"},
+      {"value": "Illogical", "label": "不符合逻辑"},
+      {"value": "Indeterminate", "label": "不确定"}
+    ]
+  },
+  "q8": {
+    "id": "q8",
+    "title": "Q8. 氛围基调（意境对齐）",
+    "question": "图像的整体情绪是否与诗的情感基调对齐？",
+    "options": [
+      {"value": "Aligned", "label": "对齐"},
+      {"value": "Neutral / generic", "label": "中性/通用"},
+      {"value": "Dissonant", "label": "不协调"}
+    ]
+  },
+  "q9": {
+    "id": "q9",
+    "title": "Q9. 历史/时间违规",
+    "question": "以下哪项最能描述图像？",
+    "options": [
+      {"value": "No violation detected", "label": "未检测到违规"},
+      {"value": "Modern anachronism", "label": "现代时代错误"},
+      {"value": "Wrong historical or cultural era", "label": "错误的历史或文化时代"}
+    ]
+  },
+  "q10": {
+    "id": "q10",
+    "title": "Q10. 无关主体侵入",
+    "question": "以下哪项最能描述无关元素的突出程度？",
+    "options": [
+      {"value": "None", "label": "无"},
+      {"value": "Minor intrusion", "label": "轻微侵入"},
+      {"value": "Major intrusion", "label": "严重侵入"}
+    ]
+  },
+  "q11": {
+    "id": "q11",
+    "title": "Q11. 伪文本伪影",
+    "question": "以下哪项最能描述文本类视觉伪影的存在？",
+    "options": [
+      {"value": "None", "label": "无"},
+      {"value": "Subtle", "label": "细微"},
+      {"value": "Prominent", "label": "明显"}
+    ]
+  }
+}

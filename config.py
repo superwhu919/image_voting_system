@@ -34,21 +34,48 @@ def download_dataset() -> Path:
 if ON_HF:
     DATA_DIR = download_dataset()
     ROOT_ABS = DATA_DIR
-    ROOT_DIR_A = DATA_DIR / "gpt"
-    ROOT_DIR_B = DATA_DIR / "Nano"
+    IMAGE_DIR = DATA_DIR / "Nano"
     XLSX_PATH = DATA_DIR / "tangshi_300_unique_name.xlsx"
+    CSV_PATH = DATA_DIR / "method3_similar.csv"
 else:
-    ROOT_ABS = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready")
-    ROOT_DIR_A = ROOT_ABS / "gpt"
-    ROOT_DIR_B = ROOT_ABS / "Nano"
-    XLSX_PATH = BASE_DIR / "tangshi_sub1.xlsx"
+    # Support remote deployment via environment variable
+    # If DATA_ROOT is set, use it (for remote instance/Docker)
+    # Otherwise, use local Mac development path
+    DATA_ROOT = os.getenv("DATA_ROOT")
+    if DATA_ROOT:
+        ROOT_ABS = Path(DATA_ROOT)
+        IMAGE_DIR = ROOT_ABS / "Nano"
+        # CSV path can be overridden, otherwise look in data root or base dir
+        CSV_ENV = os.getenv("CSV_PATH")
+        if CSV_ENV:
+            CSV_PATH = Path(CSV_ENV)
+        else:
+            # Try data root first, then base dir
+            csv_in_data = ROOT_ABS / "method3_similar.csv"
+            csv_in_base = BASE_DIR / "method3_similar.csv"
+            CSV_PATH = csv_in_data if csv_in_data.exists() else csv_in_base
+        # Excel path can be overridden, otherwise look in data root or base dir
+        XLSX_ENV = os.getenv("XLSX_PATH")
+        if XLSX_ENV:
+            XLSX_PATH = Path(XLSX_ENV)
+        else:
+            # Try data root first, then base dir
+            xlsx_in_data = ROOT_ABS / "tangshi_300_unique_name.xlsx"
+            xlsx_in_base = BASE_DIR / "tangshi_300_unique_name.xlsx"
+            XLSX_PATH = xlsx_in_data if xlsx_in_data.exists() else xlsx_in_base
+    else:
+        # Local development mode (Mac)
+        ROOT_ABS = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready")
+        IMAGE_DIR = ROOT_ABS / "Nano"
+        XLSX_PATH = BASE_DIR / "tangshi_300_unique_name.xlsx"
+        CSV_PATH = BASE_DIR / "method3_similar.csv"
 
 # =============================
 # Persistence (no /data on Space)
 # =============================
 PERSIST_DIR = BASE_DIR
 PERSIST_DIR.mkdir(parents=True, exist_ok=True)
-VOTES_CSV = PERSIST_DIR / "votes.csv"
+EVALUATIONS_CSV = PERSIST_DIR / "evaluations.csv"
 DB_PATH = PERSIST_DIR / "votes.db"
 
 # =============================
@@ -58,5 +85,7 @@ MAX_PER_USER = 10
 CSV_ENCODING = "utf-8-sig"
 
 # Image naming
-A_SUFFIX = ".png"
-B_SUFFIX = "_nano3_1.png"
+IMAGE_SUFFIX = "_nano3_1.png"
+
+# Questions configuration
+QUESTIONS_JSON_PATH = BASE_DIR / "questions.json"

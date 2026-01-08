@@ -1,243 +1,347 @@
-# app.py
+# app.py - Main entry point for Gradio application
+import os
 import time
 import gradio as gr
-import os, base64
 
-from config import ROOT_ABS, VOTES_CSV, ON_HF
-from operating_logic import (
+from config import ROOT_ABS, EVALUATIONS_CSV, ON_HF
+from core import (
     start_session,
-    submit_choice,
-    choose_left,
-    choose_right,
-    choose_both_good,
-    choose_both_bad,
+    reveal_poem,
+    update_phase2_answer,
+    submit_evaluation,
+    QUESTIONS,
 )
+from ui.styles import CSS
+from ui.helpers import img_html
 
 # =========================
-# CSS
+# UI Wrapper Functions
 # =========================
-CSS = """
-.selected-btn { 
-  outline: 3px solid #3B82F6 !important; 
-  border-radius: 6px; 
-}
-
-/* 400x400 tiles */
-.vote-tile {
-  width: 400px;
-  height: 400px;
-  object-fit: contain;
-  cursor: zoom-in;
-  border-radius: 8px;
-}
-
-/* modal */
-.img-modal {
-  display: none;
-  position: fixed;
-  z-index: 9999;
-  inset: 0;
-  background: rgba(0,0,0,0.78);
-  align-items: center;
-  justify-content: center;
-}
-.img-modal.open { display: flex; }
-.img-modal img {
-  max-width: min(96vw, 1100px);
-  max-height: 92vh;
-  object-fit: contain;
-  border-radius: 10px;
-  cursor: zoom-out;
-}
-"""
-
-# =========================
-# Helpers
-# =========================
-def _to_abs(p: str) -> str:
-    if not p:
-        return ""
-    if os.path.isabs(p) and os.path.exists(p):
-        return p
-    # try relative to ROOT_ABS
-    cand = os.path.join(ROOT_ABS, p)
-    return cand if os.path.exists(cand) else p
-
-def _extract_path(x):
-    if x is None:
-        return ""
-    if isinstance(x, str):
-        return x
-    if isinstance(x, dict):
-        if "value" in x:
-            return _extract_path(x["value"])
-        if "path" in x:
-            return _extract_path(x["path"])
-    return ""
-
-def _path_to_data_uri(p: str) -> str:
-    p = _to_abs(p)
-    if not p or not os.path.exists(p):
-        return ""
-    ext = os.path.splitext(p)[1].lower()
-    mime = "image/png" if ext in [".png"] else "image/jpeg"
-    with open(p, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode("utf-8")
-    return f"data:{mime};base64,{b64}"
-
-def _img_html(img_id: str, modal_id: str, path_any) -> str:
-    path = _extract_path(path_any)
-    uri = _path_to_data_uri(path)
-    if not uri:
-        return "<div></div>"
-
-    return f"""
-<div style="display:flex; justify-content:center;">
-  <img class="vote-tile" src="{uri}"
-       onclick="document.getElementById('{modal_id}').classList.add('open')" />
-</div>
-
-<div id="{modal_id}" class="img-modal"
-     onclick="this.classList.remove('open')">
-  <img src="{uri}" onclick="this.parentElement.classList.remove('open')" />
-</div>
-"""
-
-
 def start_session_ui(user_id: str):
+    """Wrap start_session to convert image path to HTML."""
     res = list(start_session(user_id))
-    # outputs order: status(0), vote_box(1), poem_md(2), left(3), right(4), ...
-    left_any = res[3]
-    right_any = res[4]
-    res[3] = _img_html("left_img", "left_modal", left_any)
-    res[4] = _img_html("right_img", "right_modal", right_any)
+    # res[2] is image_display (index 2)
+    if len(res) > 2 and res[2]:
+        res[2] = img_html("eval_img", "eval_modal", res[2])
     return tuple(res)
 
-def submit_choice_ui(user_id, poem_title, left_path, right_path, choice, t_start_ms):
-    res = list(submit_choice(user_id, poem_title, left_path, right_path, choice, t_start_ms))
-    left_any = res[3]
-    right_any = res[4]
-    res[3] = _img_html("left_img", "left_modal", left_any)
-    res[4] = _img_html("right_img", "right_modal", right_any)
+
+def reveal_poem_ui(uid, poem_title, image_path, options_dict, target_letter, phase1_choice, phase1_start_ms):
+    """Wrap reveal_poem - image already in HTML format."""
+    res = list(reveal_poem(uid, poem_title, image_path, options_dict, target_letter, phase1_choice, phase1_start_ms))
     return tuple(res)
+
+
+def submit_evaluation_ui(
+    uid, poem_title, image_path, options_dict, target_letter,
+    phase1_choice, phase1_response_ms,
+    phase2_answers, phase2_start_ms, phase1_start_ms
+):
+    """Wrap submit_evaluation to convert image path to HTML."""
+    res = list(submit_evaluation(
+        uid, poem_title, image_path, options_dict, target_letter,
+        phase1_choice, phase1_response_ms,
+        phase2_answers, phase2_start_ms, phase1_start_ms
+    ))
+    # res[2] is image_display (index 2)
+    if len(res) > 2 and res[2]:
+        res[2] = img_html("eval_img", "eval_modal", res[2])
+    return tuple(res)
+
 
 # =========================
 # UI Layout
 # =========================
-with gr.Blocks(css=CSS, title="Image Preference Voting") as demo:
-    gr.Markdown("# 唐诗配图投票")
-    gr.Markdown("请选择一个选项（四选一）。")
-
+with gr.Blocks(css=CSS, title="Image-Poem Alignment Evaluation") as demo:
+    gr.Markdown("# 图像-诗歌对齐评估")
+    gr.Markdown("评估协议：图像-诗歌对齐")
+    
     user_input = gr.Textbox(label="您的昵称", placeholder="e.g., 王维")
     start_btn = gr.Button("开始", variant="primary")
-
+    
     status_md = gr.Markdown(visible=False)
     remaining_lbl = gr.Label(value="", visible=True)
-
-    vote_box = gr.Group(visible=False)
-    with vote_box:
-        poem_md = gr.Markdown()
-
+    
+    evaluation_box = gr.Group(visible=False)
+    with evaluation_box:
+        # Phase 1: Blind Evaluation
+        gr.Markdown("## 第一阶段：盲评")
+        
+        gr.Markdown("**Q1. 这首诗摘录最可能代表这张图像？**")
+        
         with gr.Row():
-            left_img = gr.HTML()   # <- custom click-to-modal, no UI
-            right_img = gr.HTML()
-
-        with gr.Row():
-            btn_left = gr.Button("左边图片更好")
-            btn_right = gr.Button("右边图片更好")
-
-        with gr.Row():
-            btn_good = gr.Button("两张都很好，难以选择")
-            btn_bad = gr.Button("两张都很糟糕，无法选择")
-
-        with gr.Row():
-            submit_btn = gr.Button("提交", variant="primary")
-
+            # Left side: Image
+            with gr.Column(scale=1):
+                image_display = gr.HTML()  # Single image with modal
+            
+            # Right side: Choices with inline radio buttons
+            with gr.Column(scale=1):
+                option_a = gr.HTML()
+                option_b = gr.HTML()
+                option_c = gr.HTML()
+                option_d = gr.HTML()
+                
+                # Hidden radio to track selection (updated by JavaScript, triggers Gradio update)
+                phase1_choice_hidden = gr.Radio(
+                    choices=["A", "B", "C", "D"],
+                    value=None,
+                    visible=False,
+                    elem_id="phase1_choice_hidden_radio"
+                )
+        reveal_btn = gr.Button("揭示正确答案", variant="secondary", interactive=False)
+        
+        # Phase 2: Revealed Evaluation
+        phase2_box = gr.Group(visible=False)
+        with phase2_box:
+            gr.Markdown("## 第二阶段：揭示评估")
+            gr.Markdown("（现在显示正确的目标诗与图像。）")
+            
+            poem_revealed_md = gr.Markdown()
+            
+            gr.Markdown("### 第二部分：视觉回忆 — 名词测试")
+            
+            q2_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q2"]["options"]],
+                label=QUESTIONS["q2"]["question"],
+                value=None,
+            )
+            
+            q3_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q3"]["options"]],
+                label=QUESTIONS["q3"]["question"],
+                value=None,
+            )
+            
+            gr.Markdown("### 第三部分：视觉保真度 — 描述测试")
+            
+            q4_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q4"]["options"]],
+                label=QUESTIONS["q4"]["question"],
+                value=None,
+            )
+            
+            q5_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q5"]["options"]],
+                label=QUESTIONS["q5"]["question"],
+                value=None,
+            )
+            
+            gr.Markdown("### 第四部分：全局语义 — 境/意测试")
+            
+            q6_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q6"]["options"]],
+                label=QUESTIONS["q6"]["question"],
+                value=None,
+            )
+            
+            q7_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q7"]["options"]],
+                label=QUESTIONS["q7"]["question"],
+                value=None,
+            )
+            
+            q8_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q8"]["options"]],
+                label=QUESTIONS["q8"]["question"],
+                value=None,
+            )
+            
+            gr.Markdown("### 第五部分：负面约束 — 幻觉检测")
+            
+            q9_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q9"]["options"]],
+                label=QUESTIONS["q9"]["question"],
+                value=None,
+            )
+            
+            q10_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q10"]["options"]],
+                label=QUESTIONS["q10"]["question"],
+                value=None,
+            )
+            
+            q11_radio = gr.Radio(
+                choices=[(opt["label"], opt["value"]) for opt in QUESTIONS["q11"]["options"]],
+                label=QUESTIONS["q11"]["question"],
+                value=None,
+            )
+            
+            submit_btn = gr.Button("提交评估", variant="primary", interactive=False)
+    
     # ---- States ----
-    user_state   = gr.State("")
-    poem_state   = gr.State("")
-    left_state   = gr.State("")
-    right_state  = gr.State("")
-    choice_state = gr.State("")
-    t_start_ms   = gr.State(str(int(time.time() * 1000)))
-    dl_votes     = gr.State(VOTES_CSV)
-
+    user_state = gr.State("")
+    poem_state = gr.State("")
+    image_state = gr.State("")
+    options_state = gr.State({})
+    target_letter_state = gr.State("")
+    phase1_choice_state = gr.State("")
+    phase1_response_ms_state = gr.State(0)
+    phase2_answers_state = gr.State({})
+    phase1_start_ms = gr.State(str(int(time.time() * 1000)))
+    phase2_start_ms = gr.State(str(int(time.time() * 1000)))
+    dl_evaluations = gr.State(EVALUATIONS_CSV)
+    
     # =========================
-    # Wiring
+    # Event Wiring
     # =========================
     start_btn.click(
         start_session_ui,
         inputs=[user_input],
         outputs=[
             status_md,
-            vote_box,
-            poem_md,
-            left_img,
-            right_img,
+            evaluation_box,
+            image_display,
+            option_a,
+            option_b,
+            option_c,
+            option_d,
+            phase1_choice_hidden,
+            reveal_btn,
+            phase2_box,
+            poem_revealed_md,
+            q2_radio, q3_radio, q4_radio, q5_radio,
+            q6_radio, q7_radio, q8_radio,
+            q9_radio, q10_radio, q11_radio,
+            submit_btn,
             user_state,
             poem_state,
-            left_state,
-            right_state,
-            choice_state,
+            image_state,
+            options_state,
+            target_letter_state,
+            phase1_choice_state,
+            phase2_answers_state,
+            phase1_start_ms,
+            phase2_start_ms,
             remaining_lbl,
-            submit_btn,
-            t_start_ms,
-            dl_votes,
-            btn_left,
-            btn_right,
-            btn_good,
-            btn_bad,
+            dl_evaluations,
         ],
     )
-
-    btn_left.click(
-        choose_left,
-        inputs=[choice_state],
-        outputs=[choice_state, submit_btn, btn_left, btn_right, btn_good, btn_bad],
+    
+    # Update phase1_choice_state when hidden radio changes (updated by JavaScript)
+    def sync_choice_from_hidden_radio(choice_value):
+        """Sync the hidden radio value to phase1_choice_state and enable reveal button."""
+        if choice_value:
+            return choice_value, gr.update(interactive=True)
+        return "", gr.update(interactive=False)
+    
+    phase1_choice_hidden.change(
+        sync_choice_from_hidden_radio,
+        inputs=[phase1_choice_hidden],
+        outputs=[phase1_choice_state, reveal_btn],
     )
-    btn_right.click(
-        choose_right,
-        inputs=[choice_state],
-        outputs=[choice_state, submit_btn, btn_left, btn_right, btn_good, btn_bad],
-    )
-    btn_good.click(
-        choose_both_good,
-        inputs=[choice_state],
-        outputs=[choice_state, submit_btn, btn_left, btn_right, btn_good, btn_bad],
-    )
-    btn_bad.click(
-        choose_both_bad,
-        inputs=[choice_state],
-        outputs=[choice_state, submit_btn, btn_left, btn_right, btn_good, btn_bad],
-    )
-
-    submit_btn.click(
-        submit_choice_ui,
-        inputs=[user_state, poem_state, left_state, right_state, choice_state, t_start_ms],
+    
+    # Phase 1: Reveal poem
+    reveal_btn.click(
+        reveal_poem_ui,
+        inputs=[
+            user_state,
+            poem_state,
+            image_state,
+            options_state,
+            target_letter_state,
+            phase1_choice_state,
+            phase1_start_ms,
+        ],
         outputs=[
             status_md,
-            vote_box,
-            poem_md,
-            left_img,
-            right_img,
+            phase2_box,
+            poem_revealed_md,
+            submit_btn,
+            phase2_start_ms,
+            phase1_choice_state,
+            phase1_response_ms_state,
+        ],
+    )
+    
+    # Phase 2: Update answers (Q2-Q11)
+    # Create individual updater functions for each question
+    def update_q2(answer, current_answers):
+        return update_phase2_answer("q2", answer, current_answers)
+    def update_q3(answer, current_answers):
+        return update_phase2_answer("q3", answer, current_answers)
+    def update_q4(answer, current_answers):
+        return update_phase2_answer("q4", answer, current_answers)
+    def update_q5(answer, current_answers):
+        return update_phase2_answer("q5", answer, current_answers)
+    def update_q6(answer, current_answers):
+        return update_phase2_answer("q6", answer, current_answers)
+    def update_q7(answer, current_answers):
+        return update_phase2_answer("q7", answer, current_answers)
+    def update_q8(answer, current_answers):
+        return update_phase2_answer("q8", answer, current_answers)
+    def update_q9(answer, current_answers):
+        return update_phase2_answer("q9", answer, current_answers)
+    def update_q10(answer, current_answers):
+        return update_phase2_answer("q10", answer, current_answers)
+    def update_q11(answer, current_answers):
+        return update_phase2_answer("q11", answer, current_answers)
+    
+    q2_radio.change(update_q2, inputs=[q2_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q3_radio.change(update_q3, inputs=[q3_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q4_radio.change(update_q4, inputs=[q4_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q5_radio.change(update_q5, inputs=[q5_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q6_radio.change(update_q6, inputs=[q6_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q7_radio.change(update_q7, inputs=[q7_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q8_radio.change(update_q8, inputs=[q8_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q9_radio.change(update_q9, inputs=[q9_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q10_radio.change(update_q10, inputs=[q10_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    q11_radio.change(update_q11, inputs=[q11_radio, phase2_answers_state], outputs=[phase2_answers_state, submit_btn])
+    
+    # Phase 2: Submit evaluation
+    submit_btn.click(
+        submit_evaluation_ui,
+        inputs=[
             user_state,
             poem_state,
-            left_state,
-            right_state,
-            choice_state,
-            remaining_lbl,
-            t_start_ms,
-            dl_votes,
+            image_state,
+            options_state,
+            target_letter_state,
+            phase1_choice_state,
+            phase1_response_ms_state,
+            phase2_answers_state,
+            phase2_start_ms,
+            phase1_start_ms,
+        ],
+        outputs=[
+            status_md,
+            evaluation_box,
+            image_display,
+            option_a,
+            option_b,
+            option_c,
+            option_d,
+            phase1_choice_hidden,
+            reveal_btn,
+            phase2_box,
+            poem_revealed_md,
+            q2_radio, q3_radio, q4_radio, q5_radio,
+            q6_radio, q7_radio, q8_radio,
+            q9_radio, q10_radio, q11_radio,
             submit_btn,
-            btn_left,
-            btn_right,
-            btn_good,
-            btn_bad,
+            user_state,
+            poem_state,
+            image_state,
+            options_state,
+            target_letter_state,
+            phase1_choice_state,
+            phase2_answers_state,
+            phase1_start_ms,
+            phase2_start_ms,
+            remaining_lbl,
+            dl_evaluations,
         ],
     )
 
+
 if __name__ == "__main__":
+    import time
     if ON_HF:
         demo.launch(server_name="0.0.0.0", server_port=7860)
     else:
-        demo.launch(share=True, allowed_paths=[str(ROOT_ABS)])
+        # Check if running on remote instance (has DATA_ROOT env var)
+        # If so, bind to 0.0.0.0 for external access
+        # Otherwise use share=True for local development
+        if os.getenv("DATA_ROOT"):
+            demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=[str(ROOT_ABS)])
+        else:
+            demo.launch(share=True, allowed_paths=[str(ROOT_ABS)])
