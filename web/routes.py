@@ -1,0 +1,227 @@
+# FastAPI route handlers
+from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, FileResponse
+from starlette.templating import Jinja2Templates
+from pydantic import BaseModel
+from pathlib import Path
+import os
+from urllib.parse import unquote
+from urllib.parse import unquote
+
+from config import IMAGE_DIR, ROOT_ABS
+from core import start_session, reveal_poem, update_phase2_answer, submit_evaluation, remaining
+
+
+# Request models
+class StartRequest(BaseModel):
+    user_id: str
+    age: int = None
+    gender: str = ""
+    education: str = ""
+
+
+class RevealRequest(BaseModel):
+    user_id: str
+    poem_title: str
+    image_path: str
+    options_dict: dict
+    target_letter: str
+    phase1_choice: str
+    phase1_start_ms: str
+
+
+class UpdateAnswerRequest(BaseModel):
+    q_id: str
+    answer: str
+    phase2_answers: dict
+
+
+class SubmitRequest(BaseModel):
+    user_id: str
+    user_age: int = None
+    user_gender: str = ""
+    user_education: str = ""
+    poem_title: str
+    image_path: str
+    options_dict: dict
+    target_letter: str
+    phase1_choice: str
+    phase1_response_ms: int
+    phase2_answers: dict
+    phase2_start_ms: str
+    phase1_start_ms: str
+
+# Setup templates
+BASE_DIR = Path(__file__).resolve().parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+router = APIRouter()
+
+
+@router.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    """Main page."""
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@router.get("/images/{image_path:path}")
+async def serve_image(image_path: str):
+    """Serve images with proper Unicode filename handling."""
+    try:
+        # Decode URL-encoded path
+        decoded_path = unquote(image_path)
+        
+        # Construct full file path
+        # Handle both relative paths and just filenames
+        if os.path.isabs(decoded_path):
+            file_path = Path(decoded_path)
+        else:
+            # Try as relative to IMAGE_DIR first
+            file_path = Path(IMAGE_DIR) / decoded_path
+            # If that doesn't exist, try as just filename
+            if not file_path.exists():
+                file_path = Path(IMAGE_DIR) / os.path.basename(decoded_path)
+        
+        # Verify file exists and is within IMAGE_DIR for security
+        file_path = file_path.resolve()
+        image_dir_resolved = Path(IMAGE_DIR).resolve()
+        
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail=f"Image not found: {decoded_path}")
+        
+        # Security check: ensure file is within IMAGE_DIR
+        try:
+            file_path.relative_to(image_dir_resolved)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        return FileResponse(str(file_path))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error serving image: {str(e)}")
+
+
+@router.post("/api/start")
+async def api_start(request: StartRequest):
+    """Start new evaluation session."""
+    try:
+        result = start_session(
+            request.user_id,
+            user_age=request.age,
+            user_gender=request.gender or "",
+            user_education=request.education or ""
+        )
+        # Store user info in result for frontend
+        result["user_age"] = request.age
+        result["user_gender"] = request.gender
+        result["user_education"] = request.education
+        
+        # Convert image path to URL
+        if result.get("status") == "success" and result.get("image_path"):
+            image_path = result["image_path"]
+            # Get relative path for serving
+            if os.path.isabs(image_path):
+                # Try to get relative to IMAGE_DIR
+                try:
+                    rel_path = os.path.relpath(image_path, IMAGE_DIR)
+                    # Normalize path separators for URL (use forward slashes)
+                    rel_path = rel_path.replace("\\", "/")
+                    result["image_url"] = f"/images/{rel_path}"
+                except ValueError:
+                    # If can't make relative, use filename only
+                    filename = os.path.basename(image_path)
+                    result["image_url"] = f"/images/{filename}"
+            else:
+                # Normalize path separators for URL
+                normalized_path = image_path.replace("\\", "/")
+                result["image_url"] = f"/images/{normalized_path}"
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/reveal")
+async def api_reveal(request: RevealRequest):
+    """Reveal correct answer and show Phase 2."""
+    try:
+        result = reveal_poem(
+            uid=request.user_id,
+            poem_title=request.poem_title,
+            image_path=request.image_path,
+            options_dict=request.options_dict,
+            target_letter=request.target_letter,
+            phase1_choice=request.phase1_choice,
+            phase1_start_ms=request.phase1_start_ms,
+        )
+        return JSONResponse(content=result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/update-answer")
+async def api_update_answer(request: UpdateAnswerRequest):
+    """Update a Phase 2 answer."""
+    try:
+        result = update_phase2_answer(
+            q_id=request.q_id,
+            answer=request.answer,
+            phase2_answers=request.phase2_answers,
+        )
+        return JSONResponse(content=result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/submit")
+async def api_submit(request: SubmitRequest):
+    """Submit complete evaluation."""
+    try:
+        result = submit_evaluation(
+            uid=request.user_id,
+            user_age=request.user_age,
+            user_gender=request.user_gender,
+            user_education=request.user_education,
+            poem_title=request.poem_title,
+            image_path=request.image_path,
+            options_dict=request.options_dict,
+            target_letter=request.target_letter,
+            phase1_choice=request.phase1_choice,
+            phase1_response_ms=request.phase1_response_ms,
+            phase2_answers=request.phase2_answers,
+            phase2_start_ms=request.phase2_start_ms,
+            phase1_start_ms=request.phase1_start_ms,
+        )
+        
+        # Convert image path to URL
+        if result.get("status") == "success" and result.get("image_path"):
+            image_path = result["image_path"]
+            if os.path.isabs(image_path):
+                try:
+                    rel_path = os.path.relpath(image_path, IMAGE_DIR)
+                    # Normalize path separators for URL (use forward slashes)
+                    rel_path = rel_path.replace("\\", "/")
+                    result["image_url"] = f"/images/{rel_path}"
+                except ValueError:
+                    filename = os.path.basename(image_path)
+                    result["image_url"] = f"/images/{filename}"
+            else:
+                # Normalize path separators for URL
+                normalized_path = image_path.replace("\\", "/")
+                result["image_url"] = f"/images/{normalized_path}"
+        
+        return JSONResponse(content=result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/remaining/{user_id}")
+async def api_remaining(user_id: str):
+    """Get remaining evaluations count for a user."""
+    try:
+        count = remaining(user_id)
+        return JSONResponse(content={"remaining": count})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

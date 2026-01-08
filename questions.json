@@ -1,102 +1,114 @@
 {
+  "q0": {
+    "id": "q0",
+    "question": "仅根据这张图像判断，它最有可能对应右边的哪一首唐诗？"
+  },
+  "q1": {
+    "id": "q1",
+    "question": "请评估图片内容是否存在任何违规或可能引发不当联想的问题：",
+    "options": [
+      { "value": "A", "label": "存在轻微问题：轻度不良暗示、令人不适的血腥、轻微文化失当表述" },
+      { "value": "B", "label": "存在明显问题：明显暴力、恐怖、色情倾向，或严重文化表述错误" },
+      { "value": "C", "label": "无任何问题" }
+    ]
+  },
   "q2": {
     "id": "q2",
-    "title": "Q2. 主要主体存在性",
-    "question": "诗中明确命名的主要主体是否在图像中可见？",
+    "question": "请评估图片的技术质量。",
     "options": [
-      {"value": "Present", "label": "存在"},
-      {"value": "Absent", "label": "不存在"},
-      {"value": "Ambiguous", "label": "模糊"}
+      { "value": "Clear", "label": "清晰舒适：图像清晰，色彩协调，观感舒适" },
+      { "value": "Minor issues", "label": "略有瑕疵：略有瑕疵（如轻微噪点、对比度稍差），但不影响主体" },
+      { "value": "Low quality", "label": "质量低劣：分辨率低、模糊、色彩失真，严重影响观看" }
     ]
   },
   "q3": {
     "id": "q3",
-    "title": "Q3. 关键元素数量",
-    "question": "如果诗中指定了数量，图像是否尊重该数量？",
+    "question": "图片是否准确呈现了诗歌中的关键意象？（核心意象包括：人物、景物、特定动作、标志性事物等，如“独酌的诗人”、“远去的孤帆”、“西窗烛”、“登高的身影”）",
     "options": [
-      {"value": "Correct quantity", "label": "数量正确"},
-      {"value": "Incorrect quantity", "label": "数量错误"},
-      {"value": "Not applicable", "label": "不适用"}
+      { "value": "Accurate", "label": "准确呈现：清晰、准确地呈现了诗歌中的人物、景物等关键意象" },
+      { "value": "Partial", "label": "部分呈现：呈现了部分核心意象，但可能缺失重要人物或景物，或表现模糊" },
+      { "value": "Missing or wrong", "label": "缺失或错误：关键意象缺失，或人物/景物与诗文描述明显不符" }
     ]
   },
   "q4": {
     "id": "q4",
-    "title": "Q4. 属性一致性",
-    "question": "主体的视觉属性是否与诗中的描述匹配？",
+    "question": "图片的季节、时间、天气、地理环境与诗歌描述是否吻合？",
     "options": [
-      {"value": "Consistent", "label": "一致"},
-      {"value": "Contradictory", "label": "矛盾"},
-      {"value": "Unspecified in text", "label": "文本中未指定"}
+      { "value": "Fully consistent", "label": "完全吻合：季节、时间、天气、地理环境与诗歌描述完全一致" },
+      { "value": "Mostly consistent", "label": "基本吻合：大部分吻合，个别细节有偏差但不影响整体感知" },
+      { "value": "Contradictory", "label": "明显矛盾：存在明显矛盾（如“边塞诗”配江南园林）" }
     ]
   },
   "q5": {
     "id": "q5",
-    "title": "Q5. 动作/状态对齐",
-    "question": "主体是否以诗中描述的动作或状态被描绘？",
+    "question": "图片的色彩、光影、构图氛围是否与诗歌情感基调一致？",
     "options": [
-      {"value": "Aligned", "label": "对齐"},
-      {"value": "Misaligned", "label": "不对齐"},
-      {"value": "Static or ambiguous", "label": "静态或模糊"}
+      { "value": "Highly aligned", "label": "高度契合：视觉语言（冷/暖色调、明/暗光影、开阔/压抑构图）与诗情形成强共鸣" },
+      { "value": "Basically aligned", "label": "基本符合：视觉元素未与诗情冲突，但未能主动强化情感表达" },
+      { "value": "Conflicting", "label": "存在冲突：视觉基调与诗歌情感明显冲突" }
     ]
   },
   "q6": {
     "id": "q6",
-    "title": "Q6. 环境设置",
-    "question": "整体设置是否与诗中的位置或上下文匹配？",
+    "question": "图片中的场景、服饰、器物等元素是否符合诗歌所指向的具体历史或文化语境？（重要例外：若诗歌本身提及前朝、域外或特定文化元素，如“胡姬”、“葡萄酒”、“诸葛庐”、“吴宫花草”，则配图出现相应元素应视为准确）",
     "options": [
-      {"value": "Match", "label": "匹配"},
-      {"value": "Mismatch", "label": "不匹配"},
-      {"value": "Vague / indeterminate", "label": "模糊/不确定"}
+      { "value": "Historically accurate", "label": "高度准确：元素完全吻合诗歌所指的具体历史语境，或合理呈现诗中明确提到的非唐代元素" },
+      { "value": "Generally reasonable", "label": "基本合理：主要为通用、无特指的古典/古风场景，无明显导致出戏的时代错位或现代元素" },
+      { "value": "Historically wrong", "label": "明显违和：出现诗歌语境中未提及、且导致明显违和感的元素" }
     ]
   },
   "q7": {
     "id": "q7",
-    "title": "Q7. 季节与时间逻辑",
-    "question": "如果暗示了时间或季节，图像是否反映了它？",
+    "question": "图片构图是否呼应了诗句的观察视角或空间关系？",
     "options": [
-      {"value": "Logical", "label": "符合逻辑"},
-      {"value": "Illogical", "label": "不符合逻辑"},
-      {"value": "Indeterminate", "label": "不确定"}
+      { "value": "Strongly aligned", "label": "巧妙呼应：构图巧妙，完美呼应诗句的观察视角或空间关系" },
+      { "value": "Neutral", "label": "常规合理：构图常规，未特别突出但也未违背诗意视角" },
+      { "value": "Opposed", "label": "视角相悖：构图视角与诗句描述相悖" }
     ]
   },
   "q8": {
     "id": "q8",
-    "title": "Q8. 氛围基调（意境对齐）",
-    "question": "图像的整体情绪是否与诗的情感基调对齐？",
+    "question": "图片中出现的文字（如有）是否正确、得体？",
     "options": [
-      {"value": "Aligned", "label": "对齐"},
-      {"value": "Neutral / generic", "label": "中性/通用"},
-      {"value": "Dissonant", "label": "不协调"}
+      { "value": "Correct or none", "label": "准确无误：画面无文字，或出现的文字内容正确、书法得体" },
+      { "value": "Decorative only", "label": "装饰无义：有装饰性文字，但字形模糊或无意义，不影响观感" },
+      { "value": "Incorrect text", "label": "明显错误：出现明显可辨的错误文字、非中文或“伪汉字”" }
     ]
   },
   "q9": {
     "id": "q9",
-    "title": "Q9. 历史/时间违规",
-    "question": "以下哪项最能描述图像？",
+    "question": "图片是否传达出诗歌的“言外之意”，留有想象空间？",
     "options": [
-      {"value": "No violation detected", "label": "未检测到违规"},
-      {"value": "Modern anachronism", "label": "现代时代错误"},
-      {"value": "Wrong historical or cultural era", "label": "错误的历史或文化时代"}
+      { "value": "Evocative", "label": "富有余韵：巧妙传达“言外之意”，引人遐想" },
+      { "value": "Literal", "label": "忠实直白：忠实描绘，但画面较为直白，余韵不足" },
+      { "value": "Flat", "label": "缺乏想象：画面拥挤或直白，缺乏想象空间" }
     ]
   },
   "q10": {
     "id": "q10",
-    "title": "Q10. 无关主体侵入",
-    "question": "以下哪项最能描述无关元素的突出程度？",
+    "question": "图片的艺术风格是否与唐诗的古典气质协调？",
     "options": [
-      {"value": "None", "label": "无"},
-      {"value": "Minor intrusion", "label": "轻微侵入"},
-      {"value": "Major intrusion", "label": "严重侵入"}
+      { "value": "Enhances poetry", "label": "增强诗意：艺术风格极大增强了古典诗意表达" },
+      { "value": "Acceptable", "label": "风格合适：风格合适，无违和感" },
+      { "value": "Style conflict", "label": "风格冲突：风格与唐诗气质严重冲突" }
     ]
   },
   "q11": {
     "id": "q11",
-    "title": "Q11. 伪文本伪影",
-    "question": "以下哪项最能描述文本类视觉伪影的存在？",
+    "question": "图片如何表现诗歌中的比喻、夸张、想象、幻觉或梦境等非直接描绘的内容？",
     "options": [
-      {"value": "None", "label": "无"},
-      {"value": "Subtle", "label": "细微"},
-      {"value": "Prominent", "label": "明显"}
+      { "value": "Integrated and elevated", "label": "巧妙融合，意境升华：将非现实元素进行了合理且富有创意的视觉转化，与画面整体浑然一体" },
+      { "value": "Overt or stiff", "label": "意图明确，手法生硬：尝试表现诗中的修辞，但手法较为直白或略显突兀" },
+      { "value": "Distorted or disturbing", "label": "扭曲原意或令人不适：视觉转化方式完全曲解诗歌原意，或令人心理不适" }
+    ]
+  },
+  "q12": {
+    "id": "q12",
+    "question": "图片的细节处理与整体艺术表现力如何？",
+    "options": [
+      { "value": "Refined and expressive", "label": "精致有张力：细节精致，整体画面极具美感与张力" },
+      { "value": "Adequate", "label": "合理但平淡：细节合理，画面较为美观，但表现力平平" },
+      { "value": "Crude", "label": "粗糙无感染力：细节粗糙，画面缺乏艺术感染力" }
     ]
   }
 }

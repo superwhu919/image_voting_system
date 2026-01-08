@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-3">
+    <div class="col-md-8">
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="user-input" class="form-label">您的昵称</label>
+                <input type="text" class="form-control" id="user-input" placeholder="e.g., 王维">
+            </div>
+            <div class="col-md-3 mb-3">
+                <label for="user-age" class="form-label">年龄</label>
+                <input type="number" class="form-control" id="user-age" placeholder="年龄" min="1" max="120">
+            </div>
+            <div class="col-md-3 mb-3">
+                <label for="user-gender" class="form-label">性别</label>
+                <select class="form-control" id="user-gender">
+                    <option value="">请选择</option>
+                    <option value="男">男</option>
+                    <option value="女">女</option>
+                    <option value="其他">其他</option>
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label for="user-education" class="form-label">最高学历</label>
+                <select class="form-control" id="user-education">
+                    <option value="">请选择</option>
+                    <option value="小学">小学</option>
+                    <option value="初中">初中</option>
+                    <option value="高中">高中</option>
+                    <option value="大专">大专</option>
+                    <option value="本科">本科</option>
+                    <option value="硕士">硕士</option>
+                    <option value="博士">博士</option>
+                </select>
+            </div>
+            <div class="col-md-6 mb-3 d-flex align-items-end">
+                <button type="button" class="btn btn-primary" id="start-btn">开始</button>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 text-end d-flex align-items-end justify-content-end">
+        <div id="remaining-count" class="text-muted">剩余: 0 / 10</div>
+    </div>
+</div>
+
+<div id="status-message" class="hidden"></div>
+
+<div id="evaluation-box" class="hidden">
+    <h2>第一阶段：盲评</h2>
+    <p id="phase1-question"><strong>Q1. 这首诗摘录最可能代表这张图像？</strong></p>
+    
+    <div class="row">
+        <!-- Left side: Image -->
+        <div class="col-md-6" style="position: relative;">
+            <div id="image-container"></div>
+        </div>
+        
+        <!-- Right side: Choices -->
+        <div class="col-md-6">
+            <div id="poem-choices"></div>
+        </div>
+    </div>
+    
+    <div class="mt-3 d-flex align-items-center gap-3">
+        <button type="button" class="btn btn-secondary" id="reveal-btn" disabled>揭示正确答案</button>
+        <span id="reveal-answer" class="hidden" style="font-size: 1.1em; font-weight: bold;"></span>
+    </div>
+    
+    <!-- Phase 2: Revealed Evaluation -->
+    <div id="phase2-box" class="hidden mt-4">
+        <h2>第二阶段：揭示评估</h2>
+        <p>（现在显示正确的目标诗与图像。）</p>
+        
+        <div class="phase2-content-wrapper" style="display: flex; gap: 20px; align-items: flex-start;">
+            <!-- Left side: Poem and Questions -->
+            <div style="flex: 1; min-width: 0;">
+                <div id="poem-revealed" class="mb-4">
+                    <h4 id="poem-title"></h4>
+                    <p id="poem-author"></p>
+                    <pre id="poem-content" class="poem-content"></pre>
+                </div>
+                
+                <div id="phase2-questions"></div>
+                
+                <div class="mt-3">
+                    <button type="button" class="btn btn-primary" id="submit-btn" disabled>提交评估</button>
+                </div>
+            </div>
+            
+            <!-- Right side: Image and Poem (duplicate) -->
+            <div class="phase2-image-wrapper" style="flex: 0 0 500px; position: relative;">
+                <div id="phase2-image-container"></div>
+                <div id="poem-revealed-right" class="mb-4 mt-4">
+                    <h4 id="poem-title-right"></h4>
+                    <p id="poem-author-right"></p>
+                    <pre id="poem-content-right" class="poem-content"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
