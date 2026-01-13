@@ -53,7 +53,7 @@ Your data folder should have this structure:
 ```bash
 conda activate tangshi
 export DATA_ROOT="/path/to/your/data"
-export CSV_PATH="/path/to/your/data/method3_similar.csv"  # Optional
+export CSV_PATH="/path/to/your/data/poem_pool.csv"  # Optional
 
 cd voting_system
 python app.py

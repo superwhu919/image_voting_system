@@ -54,8 +54,8 @@ class TestUserLoginLogic(unittest.TestCase):
             config.DB_PATH = cls.evaluations_db
             
             # Force reload of storage module to reconnect to new databases
-            import data.storage
-            importlib.reload(data.storage)
+            import data_logic.storage
+            importlib.reload(data_logic.storage)
             
             # Reload session module
             import core.session
@@ -63,7 +63,7 @@ class TestUserLoginLogic(unittest.TestCase):
             
             # Import functions after reload
             from core.session import start_session
-            from data.storage import (
+            from data_logic.storage import (
                 store_user_demographics,
                 get_user_demographics,
                 user_count,
@@ -155,11 +155,11 @@ class TestUserLoginLogic(unittest.TestCase):
     def tearDownClass(cls):
         """Clean up temporary databases after all tests."""
         try:
-            import data.storage
-            if hasattr(data.storage, 'USERS_DB'):
-                data.storage.USERS_DB.close()
-            if hasattr(data.storage, 'EVALUATIONS_DB'):
-                data.storage.EVALUATIONS_DB.close()
+            import data_logic.storage
+            if hasattr(data_logic.storage, 'USERS_DB'):
+                data_logic.storage.USERS_DB.close()
+            if hasattr(data_logic.storage, 'EVALUATIONS_DB'):
+                data_logic.storage.EVALUATIONS_DB.close()
         except:
             pass
         shutil.rmtree(cls.temp_dir, ignore_errors=True)
@@ -180,17 +180,17 @@ class TestUserLoginLogic(unittest.TestCase):
         self.increase_user_limit = self.__class__.increase_user_limit
         self.MAX_PER_USER = self.__class__.MAX_PER_USER
         
-        import data.storage
+        import data_logic.storage
         # Clear users table
         try:
-            data.storage.USERS_DB.execute("DELETE FROM users")
-            data.storage.USERS_DB.commit()
+            data_logic.storage.USERS_DB.execute("DELETE FROM users")
+            data_logic.storage.USERS_DB.commit()
         except Exception as e:
             print(f"Warning: Could not clear users table: {e}")
         # Clear evaluations table
         try:
-            data.storage.EVALUATIONS_DB.execute("DELETE FROM evaluations")
-            data.storage.EVALUATIONS_DB.commit()
+            data_logic.storage.EVALUATIONS_DB.execute("DELETE FROM evaluations")
+            data_logic.storage.EVALUATIONS_DB.commit()
         except Exception as e:
             print(f"Warning: Could not clear evaluations table: {e}")
     
@@ -635,8 +635,8 @@ class TestUserLoginLogic(unittest.TestCase):
             
             # Use test databases from setUpClass
             import config
-            import data.storage
-            importlib.reload(data.storage)
+            import data_logic.storage
+            importlib.reload(data_logic.storage)
             
             client = TestClient(app)
             

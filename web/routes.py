@@ -11,8 +11,8 @@ from urllib.parse import unquote
 from config import IMAGE_DIR, ROOT_ABS
 from core import start_session, reveal_poem, update_phase2_answer, submit_evaluation, remaining
 from core.evaluation import IMAGE_SELECTION_SYSTEM
-from data.catalog import CATALOG
-from data.storage import get_coverage_metrics, increase_user_limit
+from data_logic.catalog import CATALOG
+from data_logic.storage import get_coverage_metrics, increase_user_limit
 
 
 # Request models

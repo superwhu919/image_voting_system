@@ -74,8 +74,8 @@ class FrontendUserLoginTest(unittest.TestCase):
         config.EVALUATIONS_DB_PATH = cls.evaluations_db
         
         # Force reload of storage module
-        import data.storage
-        importlib.reload(data.storage)
+        import data_logic.storage
+        importlib.reload(data_logic.storage)
         
         # Start test server in background thread
         cls.server_port = 8765
@@ -155,11 +155,11 @@ class FrontendUserLoginTest(unittest.TestCase):
         
         # Clean up databases
         try:
-            import data.storage
-            if hasattr(data.storage, 'USERS_DB'):
-                data.storage.USERS_DB.close()
-            if hasattr(data.storage, 'EVALUATIONS_DB'):
-                data.storage.EVALUATIONS_DB.close()
+            import data_logic.storage
+            if hasattr(data_logic.storage, 'USERS_DB'):
+                data_logic.storage.USERS_DB.close()
+            if hasattr(data_logic.storage, 'EVALUATIONS_DB'):
+                data_logic.storage.EVALUATIONS_DB.close()
         except:
             pass
         

@@ -36,7 +36,7 @@ if ON_HF:
     ROOT_ABS = DATA_DIR
     IMAGE_DIR = DATA_DIR / "Nano"
     XLSX_PATH = DATA_DIR / "tangshi_300_unique_name.xlsx"
-    CSV_PATH = DATA_DIR / "method3_similar.csv"
+    CSV_PATH = DATA_DIR / "poem_pool.csv"
 else:
     # Support remote deployment via environment variable
     # If DATA_ROOT is set, use it (for remote instance/Docker)
@@ -51,8 +51,8 @@ else:
             CSV_PATH = Path(CSV_ENV)
         else:
             # Try data root first, then base dir
-            csv_in_data = ROOT_ABS / "method3_similar.csv"
-            csv_in_base = BASE_DIR / "method3_similar.csv"
+            csv_in_data = ROOT_ABS / "poem_pool.csv"
+            csv_in_base = BASE_DIR / "poem_pool.csv"
             CSV_PATH = csv_in_data if csv_in_data.exists() else csv_in_base
         # Excel path can be overridden, otherwise look in data root or base dir
         XLSX_ENV = os.getenv("XLSX_PATH")
@@ -68,7 +68,7 @@ else:
         ROOT_ABS = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready")
         IMAGE_DIR = Path("/Users/williamhu/Desktop/poem-work/tangshi-data/all_images")
         XLSX_PATH = BASE_DIR / "tangshi_300_unique_name.xlsx"
-        CSV_PATH = BASE_DIR / "method3_similar.csv"
+        CSV_PATH = BASE_DIR / "poem_pool.csv"
 
 # =============================
 # Persistence (no /data on Space)

@@ -3,8 +3,8 @@ import time
 import json
 
 from config import MAX_PER_USER, EVALUATIONS_CSV, QUESTIONS_JSON_PATH
-from data.storage import user_count, write_evaluation, get_user_demographics, store_user_demographics, get_user_limit
-from data.catalog import CATALOG
+from data_logic.storage import user_count, write_evaluation, get_user_demographics, store_user_demographics, get_user_limit
+from data_logic.catalog import CATALOG
 from core.evaluation import get_evaluation_item, format_poem_data, format_poem_full, IMAGE_SELECTION_SYSTEM
 
 # Load questions

@@ -1,8 +1,8 @@
 # Core evaluation logic: poem selection and formatting
 import random
 from pathlib import Path
-from data.catalog import CATALOG, POEM_INFO, get_distractors
-from data.storage import get_all_image_rating_counts
+from data_logic.catalog import CATALOG, POEM_INFO, get_distractors
+from data_logic.storage import get_all_image_rating_counts
 from core.image_selection import ImageSelectionSystem
 
 
