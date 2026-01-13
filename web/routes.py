@@ -10,6 +10,9 @@ from urllib.parse import unquote
 
 from config import IMAGE_DIR, ROOT_ABS
 from core import start_session, reveal_poem, update_phase2_answer, submit_evaluation, remaining
+from core.evaluation import IMAGE_SELECTION_SYSTEM
+from data.catalog import CATALOG
+from data.storage import get_coverage_metrics, increase_user_limit
 
 
 # Request models
@@ -43,6 +46,7 @@ class SubmitRequest(BaseModel):
     user_education: str = ""
     poem_title: str
     image_path: str
+    image_type: str = ""  # gpt, mj, or nano
     options_dict: dict
     target_letter: str
     phase1_choice: str
@@ -50,6 +54,10 @@ class SubmitRequest(BaseModel):
     phase2_answers: dict
     phase2_start_ms: str
     phase1_start_ms: str
+
+
+class IncreaseLimitRequest(BaseModel):
+    user_id: str
 
 # Setup templates
 BASE_DIR = Path(__file__).resolve().parent
@@ -185,6 +193,7 @@ async def api_submit(request: SubmitRequest):
             user_education=request.user_education,
             poem_title=request.poem_title,
             image_path=request.image_path,
+            image_type=request.image_type,
             options_dict=request.options_dict,
             target_letter=request.target_letter,
             phase1_choice=request.phase1_choice,
@@ -222,6 +231,74 @@ async def api_remaining(user_id: str):
     try:
         count = remaining(user_id)
         return JSONResponse(content={"remaining": count})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/increase-limit")
+async def api_increase_limit(request: IncreaseLimitRequest):
+    """Increase user's limit by 5."""
+    try:
+        new_limit = increase_user_limit(request.user_id, increment=5)
+        return JSONResponse(content={
+            "status": "success",
+            "message": f"您的限制已增加到 {new_limit}。",
+            "new_limit": new_limit
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/debug/questions")
+async def api_debug_questions():
+    """Debug endpoint to check loaded questions."""
+    from core.session import QUESTIONS, PHASE2_QUESTION_IDS
+    return JSONResponse(content={
+        "total_questions": len(QUESTIONS),
+        "question_ids": sorted(QUESTIONS.keys()),
+        "phase2_question_ids": PHASE2_QUESTION_IDS,
+        "q13_exists": "q13" in QUESTIONS,
+        "q13_data": QUESTIONS.get("q13", "NOT FOUND")
+    })
+
+
+@router.get("/api/coverage")
+async def api_coverage():
+    """Get coverage metrics with queue information."""
+    try:
+        total_images = len(CATALOG)
+        metrics = get_coverage_metrics(total_images)
+        
+        # Get queue information from ImageSelectionSystem
+        stats = IMAGE_SELECTION_SYSTEM.get_statistics()
+        queue_sizes = stats.get('queue_sizes', {})
+        total_images_in_system = stats.get('total_images', total_images)
+        
+        # Find the earliest (lowest numbered) non-empty queue
+        primary_queue = None
+        primary_queue_size = 0
+        for queue_num in range(1, 7):
+            queue_key = f"Q{queue_num}"
+            queue_size = queue_sizes.get(queue_key, 0)
+            if queue_size > 0:
+                primary_queue = queue_num
+                primary_queue_size = queue_size
+                break
+        
+        # Calculate remaining percentage
+        if primary_queue is not None and total_images_in_system > 0:
+            remaining_percentage = (primary_queue_size / total_images_in_system) * 100
+        else:
+            remaining_percentage = 0.0
+            primary_queue = 1  # Default to Q1 if all queues empty
+        
+        # Add queue information to metrics
+        metrics['primary_queue'] = primary_queue
+        metrics['primary_queue_size'] = primary_queue_size
+        metrics['primary_queue_remaining_percentage'] = remaining_percentage
+        metrics['queue_sizes'] = queue_sizes
+        
+        return JSONResponse(content=metrics)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

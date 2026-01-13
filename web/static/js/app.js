@@ -12,6 +12,7 @@ let currentSession = {
     poem_title: null,
     image_path: null,
     image_url: null,
+    image_type: null,
     options_dict: null,
     options_data: null,
     target_letter: null,
@@ -19,6 +20,7 @@ let currentSession = {
     phase1_start_ms: null,
     phase2_start_ms: null,
     phase2_answers: {},
+    answer_revealed: false,  // Track if answer has been revealed
 };
 
 // Initialize image modal once on page load
@@ -39,13 +41,19 @@ function initImageModal() {
 document.addEventListener('DOMContentLoaded', function() {
     initImageModal();
     setupEventListeners();
+    updateCoverage();  // Load coverage metrics on page load
 });
 
 function setupEventListeners() {
     // Start button
     const startBtn = document.getElementById('start-btn');
     if (startBtn) {
-        startBtn.addEventListener('click', handleStart);
+        // Use click event, not submit - this prevents any form submission behavior
+        startBtn.addEventListener('click', function(event) {
+            event.preventDefault(); // Prevent any default behavior
+            event.stopPropagation(); // Stop event bubbling
+            handleStart();
+        });
     }
     
     // Reveal button
@@ -63,6 +71,14 @@ function setupEventListeners() {
     // Phase 1 radio buttons
     document.querySelectorAll('input[name="phase1_choice"]').forEach(radio => {
         radio.addEventListener('change', handlePhase1Choice);
+        // Prevent clicks if answer has been revealed
+        radio.addEventListener('click', function(event) {
+            if (currentSession.answer_revealed) {
+                event.preventDefault();
+                event.stopPropagation();
+                return false;
+            }
+        });
     });
     
     // Phase 2 radio buttons
@@ -74,17 +90,56 @@ function setupEventListeners() {
     setupImageModal();
 }
 
-function handleStart() {
+function handleStart(userInfoOverride = null) {
+    // Get input elements - query fresh each time to avoid stale references
     const userInput = document.getElementById('user-input');
     const userAgeInput = document.getElementById('user-age');
     const userGenderInput = document.getElementById('user-gender');
     const userEducationInput = document.getElementById('user-education');
     
-    const userId = userInput.value.trim();
-    const userAgeStr = userAgeInput ? userAgeInput.value.trim() : '';
-    const userAge = userAgeStr ? parseInt(userAgeStr) : null;
-    const userGender = userGenderInput ? userGenderInput.value.trim() : '';
-    const userEducation = userEducationInput ? userEducationInput.value.trim() : '';
+    // Use override if provided (for retries), otherwise read from inputs
+    let userId, userAge, userGender, userEducation;
+    if (userInfoOverride) {
+        userId = userInfoOverride.userId || '';
+        userAge = userInfoOverride.userAge;
+        userGender = userInfoOverride.userGender || '';
+        userEducation = userInfoOverride.userEducation || '';
+    } else {
+        // Read values from input elements
+        // IMPORTANT: Read .value property directly - this gets the current value
+        // getAttribute('value') only returns the initial HTML attribute, not the current value
+        if (!userInput) {
+            showStatus('系统错误：找不到用户名输入框。', 'error');
+            return;
+        }
+        
+        // Read username - use .value property (not getAttribute)
+        // .value property always returns a string (empty string "" if no value entered)
+        // Ensure we read the actual current value
+        userId = String(userInput.value || '').trim();
+        
+        // Read age
+        if (userAgeInput) {
+            const ageStr = (userAgeInput.value || '').trim();
+            userAge = ageStr ? parseInt(ageStr) : null;
+        } else {
+            userAge = null;
+        }
+        
+        // Read gender (select element)
+        if (userGenderInput) {
+            userGender = (userGenderInput.value || '').trim();
+        } else {
+            userGender = '';
+        }
+        
+        // Read education (select element)
+        if (userEducationInput) {
+            userEducation = (userEducationInput.value || '').trim();
+        } else {
+            userEducation = '';
+        }
+    }
     
     if (!userId) {
         showStatus('请输入您的昵称。', 'error');
@@ -106,20 +161,28 @@ function handleStart() {
         return;
     }
     
+    // Debug logging
+    const requestData = { 
+        user_id: userId,
+        age: userAge,
+        gender: userGender,
+        education: userEducation
+    };
+    console.log('Sending start request:', requestData);
+    
     fetch(`${API_BASE}/start`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-            user_id: userId,
-            age: userAge,
-            gender: userGender,
-            education: userEducation
-        }),
+        body: JSON.stringify(requestData),
     })
-    .then(response => response.json())
+    .then(response => {
+        console.log('Start response status:', response.status);
+        return response.json();
+    })
     .then(data => {
+        console.log('Start response data:', data);
         if (data.status === 'success') {
             // Disable user input field after successful start
             if (userInput) {
@@ -146,6 +209,7 @@ function handleStart() {
                 poem_title: data.poem_title,
                 image_path: data.image_path,
                 image_url: data.image_url || null,
+                image_type: data.image_type || null,
                 options_dict: data.options_dict,
                 options_data: data.options_data,
                 target_letter: data.target_letter,
@@ -153,10 +217,76 @@ function handleStart() {
                 phase1_start_ms: data.phase1_start_ms,
                 phase2_start_ms: data.phase2_start_ms,
                 phase2_answers: {},
+                answer_revealed: false,
             };
             updateUIForPhase1(data);
             showStatus(data.message, 'success');
-            updateRemaining(data.remaining);
+            updateRemaining(data.remaining, data.user_limit || 10);
+            updateCoverage();  // Update coverage metrics after start
+        } else if (data.status === 'limit_reached') {
+            // User has hit 10 limits - show modal to ask if they want to continue
+            // Don't disable fields yet - wait for user's decision
+            // Store user info for retry
+            const storedUserInfo = {
+                userId: userId,
+                userAge: userAge,
+                userGender: userGender,
+                userEducation: userEducation
+            };
+            
+            // Verify we have valid user info
+            if (!storedUserInfo.userId || !storedUserInfo.userAge || !storedUserInfo.userGender || !storedUserInfo.userEducation) {
+                console.error('Missing user info:', storedUserInfo);
+                showStatus('错误：用户信息不完整。请重新填写并重试。', 'error');
+                return;
+            }
+            
+            showLimitExtensionModal(
+                data.message + '\n\n点击"是"将增加您的限制 5 次。',
+                () => {
+                    // User clicked Yes - increase limit and retry start
+                    if (!storedUserInfo.userId) {
+                        showStatus('错误：无法获取用户信息。', 'error');
+                        return;
+                    }
+                    
+                    fetch(`${API_BASE}/increase-limit`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            user_id: storedUserInfo.userId
+                        }),
+                    })
+                    .then(response => response.json())
+                    .then(limitData => {
+                        if (limitData.status === 'success') {
+                            showStatus(limitData.message, 'success');
+                            // Retry the start request with stored user info
+                            handleStart(storedUserInfo);
+                        } else {
+                            showStatus('增加限制时发生错误，请重试。', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error increasing limit:', error);
+                        showStatus('发生错误，请重试。', 'error');
+                    });
+                },
+                () => {
+                    // User clicked No - show thank you message
+                    showStatus('感谢您的参与！', 'success');
+                    // Hide evaluation box if visible
+                    const evalBox = document.getElementById('evaluation-box');
+                    if (evalBox) {
+                        evalBox.classList.add('hidden');
+                    }
+                    if (data.remaining !== undefined) {
+                        updateRemaining(data.remaining, data.user_limit || 10);
+                    }
+                }
+            );
         } else if (data.name_taken) {
             // Name is taken - allow user to change it
             showStatus(data.message, 'error');
@@ -168,7 +298,7 @@ function handleStart() {
         } else {
             showStatus(data.message, 'error');
             if (data.remaining !== undefined) {
-                updateRemaining(data.remaining);
+                updateRemaining(data.remaining, data.user_limit || 10);
             }
         }
     })
@@ -178,6 +308,18 @@ function handleStart() {
 }
 
 function handlePhase1Choice(event) {
+    // Prevent changing choice after answer has been revealed
+    if (currentSession.answer_revealed) {
+        event.preventDefault();
+        event.stopPropagation();
+        // Restore the previous selection
+        const previousChoice = currentSession.phase1_choice;
+        document.querySelectorAll('input[name="phase1_choice"]').forEach(radio => {
+            radio.checked = (radio.value === previousChoice);
+        });
+        return;
+    }
+    
     const choice = event.target.value;
     currentSession.phase1_choice = choice;
     
@@ -234,6 +376,18 @@ function handleReveal() {
                 revealBtn.classList.add('disabled');
             }
             
+            // Mark answer as revealed and disable all phase 1 radio buttons
+            currentSession.answer_revealed = true;
+            document.querySelectorAll('input[name="phase1_choice"]').forEach(radio => {
+                radio.disabled = true;
+                radio.style.pointerEvents = 'none';
+            });
+            // Also disable labels to prevent clicking them
+            document.querySelectorAll('label[for^="radio_"]').forEach(label => {
+                label.style.pointerEvents = 'none';
+                label.style.cursor = 'not-allowed';
+            });
+            
             updateUIForPhase2(data);
             // Don't show status message at top, answer is shown next to button
         } else {
@@ -284,7 +438,11 @@ function handleSubmit() {
         return;
     }
     
-    const allAnswered = Object.keys(currentSession.phase2_answers).length >= 12;
+    // Get the number of Phase 2 questions from the last reveal response
+    // We'll check this dynamically by counting questions in phase2-questions container
+    const phase2Questions = document.querySelectorAll('#phase2-questions .phase2-question');
+    const requiredCount = phase2Questions.length;
+    const allAnswered = Object.keys(currentSession.phase2_answers).length >= requiredCount;
     if (!allAnswered) {
         showStatus('请完成所有第二阶段问题。', 'error');
         return;
@@ -302,6 +460,7 @@ function handleSubmit() {
             user_education: currentSession.user_education,
             poem_title: currentSession.poem_title,
             image_path: currentSession.image_path,
+            image_type: currentSession.image_type || '',
             options_dict: currentSession.options_dict,
             target_letter: currentSession.target_letter,
             phase1_choice: currentSession.phase1_choice,
@@ -326,6 +485,7 @@ function handleSubmit() {
                 poem_title: data.poem_title,
                 image_path: data.image_path,
                 image_url: data.image_url || null,
+                image_type: data.image_type || null,
                 options_dict: data.options_dict,
                 options_data: data.options_data,
                 target_letter: data.target_letter,
@@ -333,14 +493,71 @@ function handleSubmit() {
                 phase1_start_ms: data.phase1_start_ms,
                 phase2_start_ms: data.phase2_start_ms,
                 phase2_answers: {},
+                answer_revealed: false,
             };
             updateUIForPhase1(data);
             showStatus(data.message, 'success');
-            updateRemaining(data.remaining);
+            updateRemaining(data.remaining, data.user_limit || 10);
+            updateCoverage();  // Update coverage metrics after submission
+        } else if (data.status === 'limit_reached') {
+            // User has reached limit - show modal asking if they want to continue
+            const preservedUserInfo = {
+                userId: currentSession.user_id,
+                userAge: currentSession.user_age,
+                userGender: currentSession.user_gender,
+                userEducation: currentSession.user_education,
+            };
+            
+            showLimitExtensionModal(
+                data.message + '\n\n点击"是"将增加您的限制 5 次。',
+                () => {
+                    // User clicked Yes - increase limit and get next evaluation
+                    if (!preservedUserInfo.userId) {
+                        showStatus('错误：无法获取用户信息。', 'error');
+                        return;
+                    }
+                    
+                    fetch(`${API_BASE}/increase-limit`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            user_id: preservedUserInfo.userId
+                        }),
+                    })
+                    .then(response => response.json())
+                    .then(limitData => {
+                        if (limitData.status === 'success') {
+                            showStatus(limitData.message, 'success');
+                            // Get next evaluation by calling start with preserved user info
+                            handleStart(preservedUserInfo);
+                        } else {
+                            showStatus('增加限制时发生错误，请重试。', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error increasing limit:', error);
+                        showStatus('发生错误，请重试。', 'error');
+                    });
+                },
+                () => {
+                    // User clicked No - show thank you message
+                    showStatus('感谢您的参与！', 'success');
+                    // Hide evaluation box
+                    const evalBox = document.getElementById('evaluation-box');
+                    if (evalBox) {
+                        evalBox.classList.add('hidden');
+                    }
+                    if (data.remaining !== undefined) {
+                        updateRemaining(data.remaining, data.user_limit || 10);
+                    }
+                }
+            );
         } else {
             showStatus(data.message, 'error');
             if (data.remaining !== undefined) {
-                updateRemaining(data.remaining);
+                updateRemaining(data.remaining, data.user_limit || 10);
             }
         }
     })
@@ -393,11 +610,19 @@ function updateUIForPhase1(data) {
         revealAnswer.textContent = '';
     }
     
-    // Reset phase 1 choice
+    // Reset phase 1 choice and re-enable radio buttons for new evaluation
     document.querySelectorAll('input[name="phase1_choice"]').forEach(radio => {
         radio.checked = false;
+        radio.disabled = false;
+        radio.style.pointerEvents = 'auto';
+    });
+    // Re-enable labels
+    document.querySelectorAll('label[for^="radio_"]').forEach(label => {
+        label.style.pointerEvents = 'auto';
+        label.style.cursor = 'pointer';
     });
     currentSession.phase1_choice = null;
+    currentSession.answer_revealed = false;  // Reset reveal flag for new evaluation
 }
 
 function updateUIForPhase2(data) {
@@ -458,6 +683,8 @@ function updateUIForPhase2(data) {
     }
     
     // Render questions if not already rendered
+    console.log('Questions received from server:', Object.keys(data.questions || {}));
+    console.log('q13 in questions:', 'q13' in (data.questions || {}));
     renderQuestions(data.questions);
     
     // Reset submit button
@@ -538,28 +765,66 @@ function updatePoemChoices(optionsData) {
     
     choicesContainer.innerHTML = html;
     
-    // Re-attach event listeners
+    // Re-attach event listeners and ensure radio buttons are enabled
     document.querySelectorAll('input[name="phase1_choice"]').forEach(radio => {
+        radio.disabled = false;
+        radio.style.pointerEvents = 'auto';
         radio.addEventListener('change', handlePhase1Choice);
+        // Prevent clicks if answer has been revealed
+        radio.addEventListener('click', function(event) {
+            if (currentSession.answer_revealed) {
+                event.preventDefault();
+                event.stopPropagation();
+                return false;
+            }
+        });
+    });
+    // Re-enable labels
+    document.querySelectorAll('label[for^="radio_"]').forEach(label => {
+        label.style.pointerEvents = 'auto';
+        label.style.cursor = 'pointer';
     });
 }
 
 function renderQuestions(questions) {
     const questionsContainer = document.getElementById('phase2-questions');
-    if (!questionsContainer || questionsContainer.innerHTML.trim() !== '') {
-        return; // Already rendered
+    if (!questionsContainer) {
+        console.error('phase2-questions container not found!');
+        return;
     }
+    
+    if (!questions) {
+        console.error('No questions object provided!');
+        return;
+    }
+    
+    // Always clear and re-render to ensure we show all current questions
+    questionsContainer.innerHTML = '';
     
     let html = '';
     
-    // Render all questions q1-q12
-    for (let i = 1; i <= 12; i++) {
-        const qId = `q${i}`;
+    // Get all question IDs except q0, sorted numerically
+    const questionIds = Object.keys(questions)
+        .filter(qId => qId !== 'q0')
+        .sort((a, b) => {
+            const numA = parseInt(a.substring(1)) || 999;
+            const numB = parseInt(b.substring(1)) || 999;
+            return numA - numB;
+        });
+    
+    console.log('Question IDs to render:', questionIds);
+    console.log('q13 in questionIds:', questionIds.includes('q13'));
+    
+    // Render all Phase 2 questions dynamically
+    for (const qId of questionIds) {
         if (questions[qId]) {
             html += renderQuestion(qId, questions[qId]);
+        } else {
+            console.warn(`Question ${qId} not found in questions object`);
         }
     }
     
+    console.log('Rendered HTML length:', html.length);
     questionsContainer.innerHTML = html;
     
     // Attach event listeners
@@ -626,16 +891,89 @@ function showStatus(message, type = 'info') {
     }
 }
 
-function updateRemaining(count) {
+function updateRemaining(count, userLimit = 10) {
     const remainingDiv = document.getElementById('remaining-count');
     if (remainingDiv) {
-        remainingDiv.textContent = `剩余: ${count} / ${10}`;
+        remainingDiv.textContent = `剩余: ${count} / ${userLimit}`;
     }
+}
+
+function updateCoverage() {
+    fetch(`${API_BASE}/coverage`)
+        .then(response => response.json())
+        .then(data => {
+            const coverageDiv = document.getElementById('coverage-metrics');
+            if (coverageDiv) {
+                // Display primary queue information
+                const primaryQueue = data.primary_queue || 1;
+                const remainingPercentage = data.primary_queue_remaining_percentage || 0.0;
+                
+                const queueText = `Q${primaryQueue}: ${remainingPercentage.toFixed(1)}%`;
+                
+                coverageDiv.innerHTML = `
+                    <div class="coverage-item">
+                        <strong>当前队列:</strong> ${queueText}
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            // Silently handle error
+        });
 }
 
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function showLimitExtensionModal(message, onYes, onNo) {
+    const modal = document.getElementById('limit-extension-modal');
+    const messageEl = document.getElementById('limit-extension-message');
+    const yesBtn = document.getElementById('limit-extension-yes-btn');
+    const noBtn = document.getElementById('limit-extension-no-btn');
+    
+    if (!modal || !messageEl || !yesBtn || !noBtn) {
+        // Fallback to native confirm if modal elements don't exist
+        const confirmed = confirm(message);
+        if (confirmed) {
+            onYes();
+        } else {
+            onNo();
+        }
+        return;
+    }
+    
+    // Set message (preserve line breaks)
+    messageEl.innerHTML = message.replace(/\n/g, '<br>');
+    
+    // Show modal
+    modal.style.display = 'block';
+    
+    // Remove existing event listeners by cloning and replacing buttons
+    const newYesBtn = yesBtn.cloneNode(true);
+    const newNoBtn = noBtn.cloneNode(true);
+    yesBtn.parentNode.replaceChild(newYesBtn, yesBtn);
+    noBtn.parentNode.replaceChild(newNoBtn, noBtn);
+    
+    // Add event listeners
+    newYesBtn.addEventListener('click', function() {
+        modal.style.display = 'none';
+        onYes();
+    });
+    
+    newNoBtn.addEventListener('click', function() {
+        modal.style.display = 'none';
+        onNo();
+    });
+    
+    // Close modal when clicking outside of it
+    modal.addEventListener('click', function(event) {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+            onNo();
+        }
+    });
 }
 

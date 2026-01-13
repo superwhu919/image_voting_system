@@ -66,7 +66,7 @@ else:
     else:
         # Local development mode (Mac)
         ROOT_ABS = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready")
-        IMAGE_DIR = ROOT_ABS / "Nano"
+        IMAGE_DIR = Path("/Users/williamhu/Desktop/poem-work/tangshi-data/all_images")
         XLSX_PATH = BASE_DIR / "tangshi_300_unique_name.xlsx"
         CSV_PATH = BASE_DIR / "method3_similar.csv"
 
@@ -76,7 +76,10 @@ else:
 PERSIST_DIR = BASE_DIR
 PERSIST_DIR.mkdir(parents=True, exist_ok=True)
 EVALUATIONS_CSV = PERSIST_DIR / "evaluations.csv"
-DB_PATH = PERSIST_DIR / "votes.db"
+USERS_DB_PATH = PERSIST_DIR / "users.db"
+EVALUATIONS_DB_PATH = PERSIST_DIR / "evaluations.db"
+# Keep DB_PATH for backward compatibility (points to evaluations)
+DB_PATH = EVALUATIONS_DB_PATH
 
 # =============================
 # App settings
@@ -85,7 +88,9 @@ MAX_PER_USER = 10
 CSV_ENCODING = "utf-8-sig"
 
 # Image naming
-IMAGE_SUFFIX = "_nano3_1.png"
+# Images are now named as: {poem_title}_{type}.png where type is gpt, mj, or nano
+# IMAGE_SUFFIX is no longer used - images are discovered by scanning the directory
+IMAGE_SUFFIX = None  # Deprecated - kept for backward compatibility
 
 # Questions configuration
 QUESTIONS_JSON_PATH = BASE_DIR / "questions.json"

@@ -3,17 +3,25 @@ import time
 import json
 
 from config import MAX_PER_USER, EVALUATIONS_CSV, QUESTIONS_JSON_PATH
-from data.storage import user_count, write_evaluation, get_user_demographics, store_user_demographics
-from core.evaluation import get_evaluation_item, format_poem_data, format_poem_full
+from data.storage import user_count, write_evaluation, get_user_demographics, store_user_demographics, get_user_limit
+from data.catalog import CATALOG
+from core.evaluation import get_evaluation_item, format_poem_data, format_poem_full, IMAGE_SELECTION_SYSTEM
 
 # Load questions
 with open(QUESTIONS_JSON_PATH, 'r', encoding='utf-8') as f:
     QUESTIONS = json.load(f)
 
+# Get list of Phase 2 question IDs (all questions except q0)
+PHASE2_QUESTION_IDS = sorted([q_id for q_id in QUESTIONS.keys() if q_id != "q0"], 
+                              key=lambda x: int(x[1:]) if x[1:].isdigit() else 999)
+
 
 def remaining(uid: str) -> int:
     """Calculate remaining evaluations for a user."""
-    return max(0, MAX_PER_USER - user_count(uid))
+    # Check if user has a custom limit
+    user_limit = get_user_limit(uid)
+    limit = user_limit if user_limit is not None else MAX_PER_USER
+    return max(0, limit - user_count(uid))
 
 
 def start_session(uid_input: str, user_age: int = None, user_gender: str = "", user_education: str = "") -> dict:
@@ -28,6 +36,28 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
         return {
             "status": "error",
             "message": "请输入您的昵称。",
+            "remaining": 0,
+        }
+    
+    # Validate all required fields before processing
+    if user_age is None or user_age <= 0:
+        return {
+            "status": "error",
+            "message": "请输入有效的年龄。",
+            "remaining": 0,
+        }
+    
+    if not user_gender or not user_gender.strip():
+        return {
+            "status": "error",
+            "message": "请选择性别。",
+            "remaining": 0,
+        }
+    
+    if not user_education or not user_education.strip():
+        return {
+            "status": "error",
+            "message": "请选择教育程度。",
             "remaining": 0,
         }
 
@@ -64,8 +94,22 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
         # If all demographics match, allow resume
         if age_match and gender_match and education_match:
             rem = remaining(uid)
-            # Get new evaluation item for resume
-            poem_title, image_path, distractors, options_dict, target_letter = get_evaluation_item()
+            user_limit = get_user_limit(uid) or MAX_PER_USER
+            completed = user_count(uid)
+            
+            # If user has reached their limit, ask if they want to extend
+            if rem <= 0:
+                return {
+                    "status": "limit_reached",
+                    "message": f"您已完成 {completed} 个评估。是否要继续？",
+                    "remaining": 0,
+                    "completed": completed,
+                    "can_extend": True,
+                    "user_limit": user_limit,
+                }
+            
+            # Get new evaluation item for resume (use uid as session_id)
+            poem_title, image_path, image_type, distractors, options_dict, target_letter = get_evaluation_item(uid)
             options_data = {}
             for letter in ["A", "B", "C", "D"]:
                 options_data[letter] = format_poem_data(options_dict[letter], letter)
@@ -76,10 +120,12 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
                 "user_id": uid,
                 "poem_title": poem_title,
                 "image_path": image_path,
+                "image_type": image_type,
                 "options_dict": options_dict,
                 "options_data": options_data,
                 "target_letter": target_letter,
                 "remaining": rem,
+                "user_limit": user_limit,
                 "phase1_start_ms": str(now_ms),
                 "phase2_start_ms": str(now_ms),
                 "q0": QUESTIONS.get("q0", {}),
@@ -97,15 +143,22 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
     store_user_demographics(uid, user_age, user_gender, user_education)
     
     rem = remaining(uid)
+    user_limit = get_user_limit(uid) or MAX_PER_USER
+    completed = user_count(uid)
+    
+    # If user has reached their limit, ask if they want to extend
     if rem <= 0:
         return {
-            "status": "error",
-            "message": f"感谢！您已达到限制 ({MAX_PER_USER})。",
+            "status": "limit_reached",
+            "message": f"您已完成 {completed} 个评估。是否要继续？",
             "remaining": 0,
+            "completed": completed,
+            "can_extend": True,
+            "user_limit": user_limit,
         }
-
-    # Get new evaluation item
-    poem_title, image_path, distractors, options_dict, target_letter = get_evaluation_item()
+    
+    # Get new evaluation item (use uid as session_id)
+    poem_title, image_path, image_type, distractors, options_dict, target_letter = get_evaluation_item(uid)
     
     # Format poem options data
     options_data = {}
@@ -118,10 +171,12 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
         "user_id": uid,
         "poem_title": poem_title,
         "image_path": image_path,
+        "image_type": image_type,
         "options_dict": options_dict,
         "options_data": options_data,
         "target_letter": target_letter,
         "remaining": rem,
+        "user_limit": user_limit,
         "phase1_start_ms": str(now_ms),
         "phase2_start_ms": str(now_ms),
         "q0": QUESTIONS.get("q0", {}),
@@ -175,8 +230,8 @@ def update_phase2_answer(q_id: str, answer: str, phase2_answers: dict) -> dict:
     if answer:
         phase2_answers[q_id] = answer
     
-    # Check if all 12 questions (q1-q12) are answered
-    all_answered = all(f"q{i}" in phase2_answers for i in range(1, 13))
+    # Check if all Phase 2 questions are answered (dynamically based on QUESTIONS)
+    all_answered = all(q_id in phase2_answers for q_id in PHASE2_QUESTION_IDS)
     
     return {
         "phase2_answers": phase2_answers,
@@ -186,7 +241,7 @@ def update_phase2_answer(q_id: str, answer: str, phase2_answers: dict) -> dict:
 
 def submit_evaluation(
     uid: str, user_age: int, user_gender: str, user_education: str,
-    poem_title: str, image_path: str, options_dict: dict, target_letter: str,
+    poem_title: str, image_path: str, image_type: str, options_dict: dict, target_letter: str,
     phase1_choice: str, phase1_response_ms: int,
     phase2_answers: dict, phase2_start_ms: str, phase1_start_ms: str
 ) -> dict:
@@ -210,18 +265,22 @@ def submit_evaluation(
             "remaining": remaining(uid),
         }
     
-    if not isinstance(phase2_answers, dict) or len(phase2_answers) < 12:
+    if not isinstance(phase2_answers, dict) or len(phase2_answers) < len(PHASE2_QUESTION_IDS):
         return {
             "status": "error",
             "message": "请完成所有第二阶段问题。",
             "remaining": remaining(uid),
         }
     
-    if remaining(uid) <= 0:
+    # Check remaining BEFORE writing - if 0 or less, don't allow submission
+    rem_before = remaining(uid)
+    if rem_before <= 0:
+        user_limit = get_user_limit(uid) or MAX_PER_USER
         return {
             "status": "error",
-            "message": f"感谢！您已达到限制 ({MAX_PER_USER})。",
+            "message": f"感谢！您已达到限制 ({user_limit})。",
             "remaining": 0,
+            "user_limit": user_limit,
         }
     
     # Calculate response times
@@ -229,7 +288,13 @@ def submit_evaluation(
     phase2_ms = now_ms - int(phase2_start_ms or now_ms)
     total_ms = now_ms - int(phase1_start_ms or now_ms)
     
-    # Write evaluation
+    # Get image_type from catalog if not provided
+    if not image_type and image_path:
+        image_data = CATALOG.get(image_path)
+        if image_data:
+            image_type = image_data.get("image_type", "")
+    
+    # Write evaluation to database
     write_evaluation(
         uid=uid,
         user_age=user_age,
@@ -237,6 +302,7 @@ def submit_evaluation(
         user_education=user_education or "",
         poem_title=poem_title,
         image_path=image_path,
+        image_type=image_type or "",
         phase1_choice=phase1_choice,
         phase1_response_ms=phase1_ms,
         phase2_answers=phase2_answers,
@@ -244,15 +310,32 @@ def submit_evaluation(
         total_response_ms=total_ms,
     )
     
-    # Get next evaluation item
-    poem_title_next, image_path_next, _, options_dict_next, target_letter_next = get_evaluation_item()
+    # Submit rating to image selection system (use uid as session_id)
+    IMAGE_SELECTION_SYSTEM.submit_rating(uid, image_path, poem_title)
+    
+    # Check remaining AFTER writing - if 0, show limit_reached modal instead of next evaluation
+    rem_after = remaining(uid)
+    user_limit = get_user_limit(uid) or MAX_PER_USER
+    completed = user_count(uid)
+    
+    if rem_after <= 0:
+        # User has reached their limit - show limit_reached modal
+        return {
+            "status": "limit_reached",
+            "message": f"您已完成 {completed} 个评估。是否要继续？",
+            "remaining": 0,
+            "completed": completed,
+            "can_extend": True,
+            "user_limit": user_limit,
+        }
+    
+    # Get next evaluation item (use uid as session_id)
+    poem_title_next, image_path_next, image_type_next, _, options_dict_next, target_letter_next = get_evaluation_item(uid)
     
     # Format poem options data
     options_data_next = {}
     for letter in ["A", "B", "C", "D"]:
         options_data_next[letter] = format_poem_data(options_dict_next[letter], letter)
-    
-    rem_after = remaining(uid)
     
     return {
         "status": "success",
@@ -260,10 +343,12 @@ def submit_evaluation(
         "user_id": uid,
         "poem_title": poem_title_next,
         "image_path": image_path_next,
+        "image_type": image_type_next,
         "options_dict": options_dict_next,
         "options_data": options_data_next,
         "target_letter": target_letter_next,
         "remaining": rem_after,
+        "user_limit": user_limit,
         "phase1_start_ms": str(now_ms),
         "phase2_start_ms": str(now_ms),
         "q0": QUESTIONS.get("q0", {}),

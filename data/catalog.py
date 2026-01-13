@@ -1,39 +1,81 @@
 import os
 import random
 import pandas as pd
-from config import CSV_PATH, IMAGE_DIR, IMAGE_SUFFIX
+from pathlib import Path
+from config import CSV_PATH, IMAGE_DIR, XLSX_PATH
 
-def build_catalog(csv_path: str = CSV_PATH,
-                  image_dir: str = IMAGE_DIR):
+def build_catalog(image_dir: str = IMAGE_DIR):
     """
-    Returns: { title: image_path }
-    Only includes poems that have Nano images.
+    Scan image directory and build catalog from filenames.
+    Images are named as: {poem_title}_{type}.png where type is gpt, mj, or nano.
+    
+    Returns: { image_path: {"poem_title": str, "image_type": str} }
     """
-    if not os.path.isfile(csv_path):
-        raise FileNotFoundError(f"CSV not found: {csv_path}")
-
-    df = pd.read_csv(csv_path)
+    image_dir_path = Path(image_dir)
+    if not image_dir_path.exists():
+        raise FileNotFoundError(f"Image directory not found: {image_dir}")
+    
     catalog = {}
-
-    for _, row in df.iterrows():
-        title = str(row.get("Title", "")).strip()
-        if not title:
+    valid_types = {"gpt", "mj", "nano"}
+    
+    # Scan all PNG files in directory
+    for image_file in image_dir_path.glob("*.png"):
+        filename = image_file.name
+        # Remove .png extension
+        name_without_ext = filename[:-4]
+        
+        # Parse filename: {poem_title}_{type}
+        # Find the last underscore to split title and type
+        last_underscore_idx = name_without_ext.rfind("_")
+        if last_underscore_idx == -1:
+            # No underscore found, skip this file
             continue
-
-        image_path = os.path.join(image_dir, f"{title}{IMAGE_SUFFIX}")
-
-        if os.path.isfile(image_path):
-            catalog[title] = image_path
-
+        
+        poem_title = name_without_ext[:last_underscore_idx]
+        image_type = name_without_ext[last_underscore_idx + 1:]
+        
+        # Validate type
+        if image_type not in valid_types:
+            continue
+        
+        # Store with full path
+        image_path = str(image_file.resolve())
+        catalog[image_path] = {
+            "poem_title": poem_title,
+            "image_type": image_type
+        }
+    
+    if not catalog:
+        raise RuntimeError(f"No valid images found in {image_dir}. Expected format: {{poem_title}}_{{type}}.png")
+    
     return catalog
 
-def load_poem_info(csv_path: str = CSV_PATH):
+def load_poem_info(xlsx_path: str = XLSX_PATH, csv_path: str = CSV_PATH):
     """
+    Load poem information from Excel file.
+    Falls back to CSV if Excel is not available (for backward compatibility).
+    
     Returns:
       { title: { "author": ..., "content": ..., "similar_titles": [A, B, C] } }
     """
-    df = pd.read_csv(csv_path)
     poem_info = {}
+    
+    # Try Excel first
+    if xlsx_path and Path(xlsx_path).exists():
+        try:
+            df = pd.read_excel(xlsx_path, engine='openpyxl')
+        except Exception as e:
+            # Fall back to CSV if Excel read fails
+            if csv_path and Path(csv_path).exists():
+                df = pd.read_csv(csv_path)
+            else:
+                raise FileNotFoundError(f"Neither Excel file ({xlsx_path}) nor CSV file ({csv_path}) found")
+    elif csv_path and Path(csv_path).exists():
+        # Fall back to CSV
+        df = pd.read_csv(csv_path)
+    else:
+        raise FileNotFoundError(f"Neither Excel file ({xlsx_path}) nor CSV file ({csv_path}) found")
+    
     for _, row in df.iterrows():
         title = str(row.get("Title", "")).strip()
         author = str(row.get("Author", "")).strip()
@@ -54,22 +96,29 @@ def load_poem_info(csv_path: str = CSV_PATH):
 
 def get_distractors(target_title: str, catalog: dict, poem_info: dict, num_distractors: int = 3):
     """
-    Get pre-defined similar distractors from CSV columns A, B, C for Phase 1 evaluation.
+    Get pre-defined similar distractors from Excel/CSV columns A, B, C for Phase 1 evaluation.
     Returns list of poem titles (excluding target).
+    
+    Note: catalog is now {image_path: {poem_title, image_type}}, so we need to extract unique poem titles.
     """
-    # Get pre-defined similar titles from the CSV
+    # Get all unique poem titles from catalog
+    catalog_poem_titles = set()
+    for image_data in catalog.values():
+        catalog_poem_titles.add(image_data["poem_title"])
+    
+    # Get pre-defined similar titles from the Excel/CSV
     target_info = poem_info.get(target_title, {})
     similar_titles = target_info.get("similar_titles", [])
     
     # Filter to only include titles that exist in catalog and are not the target
     available_distractors = [
         t for t in similar_titles 
-        if t in catalog and t != target_title
+        if t in catalog_poem_titles and t != target_title
     ]
     
     # If we don't have enough pre-defined distractors, fall back to random selection
     if len(available_distractors) < num_distractors:
-        available_titles = [t for t in catalog.keys() if t != target_title]
+        available_titles = [t for t in catalog_poem_titles if t != target_title]
         # Combine pre-defined with random ones if needed
         if len(available_titles) < num_distractors:
             raise ValueError(f"Not enough poems for distractors. Need {num_distractors}, have {len(available_titles)}")
