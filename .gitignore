@@ -6,6 +6,9 @@ __pycache__/
 .gradio
 local_readme.txt
 
+# Data directories
+all_images/
+
 # Database files
 *.db
 *.db-journal

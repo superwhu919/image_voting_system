@@ -21,10 +21,14 @@ The system uses a sophisticated 6-queue priority system to ensure fair distribut
 ```
 voting_system/
 ├── app.py                    # FastAPI application entry point
-├── config.py                 # Configuration (paths, settings, environment detection)
+├── config.py                 # Configuration (paths, settings)
 ├── requirements.txt          # Python dependencies
 ├── poem_pool.csv             # Poem metadata and similar poem mappings
 ├── questions.json            # Phase 2 evaluation questions
+├── all_images/               # Image directory (gitignored)
+│   ├── {poem_title}_gpt.png
+│   ├── {poem_title}_mj.png
+│   └── {poem_title}_nano.png
 │
 ├── core/                     # Core business logic
 │   ├── session.py           # Session management, user authentication, evaluation flow
@@ -32,7 +36,7 @@ voting_system/
 │   └── image_selection.py   # 6-queue priority system for fair image distribution
 │
 ├── data_logic/               # Data access layer
-│   ├── catalog.py          # Builds image catalog from directory, loads poem info
+│   ├── catalog.py          # Builds image catalog from directory, loads poem info from CSV
 │   └── storage.py           # Database operations (users, evaluations)
 │
 ├── web/                      # Web interface
@@ -45,8 +49,7 @@ voting_system/
 │   └── styles.py            # Style definitions
 │
 ├── utils/                    # Utility scripts
-│   ├── dump_db.py           # Database export utilities
-│   └── flush.py             # Data flushing utilities
+│   └── dump_db.py           # Database export utilities
 │
 └── tests/                    # Test suites
     ├── test_user_login.py    # User login logic tests
@@ -56,14 +59,11 @@ voting_system/
 ### Key Components
 
 - **`app.py`**: FastAPI application that serves the web interface and API endpoints
-- **`config.py`**: Centralized configuration that handles:
-  - Environment detection (local, remote, HuggingFace Spaces)
-  - Data path resolution (images, CSV, Excel files)
-  - Database paths
+- **`config.py`**: Centralized configuration for data paths and database locations
 - **`core/session.py`**: Manages user sessions, authentication, and the evaluation workflow
 - **`core/evaluation.py`**: Handles poem selection, formatting, and coordinates with the image selection system
 - **`core/image_selection.py`**: Implements a 6-queue priority system to ensure fair image distribution
-- **`data_logic/catalog.py`**: Scans image directories and loads poem metadata
+- **`data_logic/catalog.py`**: Scans image directories and loads poem metadata from CSV
 - **`data_logic/storage.py`**: SQLite database operations for users and evaluations
 - **`web/routes.py`**: API endpoints for starting sessions, revealing answers, submitting evaluations
 
@@ -77,18 +77,20 @@ voting_system/
    pip install -r requirements.txt
    ```
 
-### Running Locally (Development)
+### Setup
 
-1. **Set up your data directory structure**:
+1. **Place your images** in the `all_images/` folder within the project directory:
    ```
-   /path/to/your/images/
-   └── Nano/                    # Image directory
+   voting_system/
+   └── all_images/
        ├── {poem_title}_gpt.png
        ├── {poem_title}_mj.png
        └── {poem_title}_nano.png
    ```
 
-2. **Configure paths** (see Configuration section below)
+2. **Ensure data files are in place**:
+   - `poem_pool.csv` - Must be in the project root
+   - `questions.json` - Must be in the project root
 
 3. **Run the application**:
    ```bash
@@ -98,53 +100,17 @@ voting_system/
 4. **Access the application**:
    - Open your browser to `http://127.0.0.1:7860`
 
-### Running on Remote Instance
-
-1. **Set environment variables**:
-   ```bash
-   export DATA_ROOT="/path/to/your/data"
-   export CSV_PATH="/path/to/your/data/poem_pool.csv"  # Optional
-   export XLSX_PATH="/path/to/your/data/tangshi_300_unique_name.xlsx"  # Optional
-   ```
-
-2. **Run the application**:
-   ```bash
-   python app.py
-   ```
-
-3. **Access the application**:
-   - The app will bind to `0.0.0.0:7860`
-   - Access via `http://YOUR_INSTANCE_IP:7860`
-   - Make sure port 7860 is open in your firewall
-
-### Running on HuggingFace Spaces
-
-The system automatically detects HuggingFace Spaces environment when `SPACE_ID` or `SYSTEM=spaces` environment variables are set. It will download the dataset from the private HuggingFace repository.
-
 ## Configuration
 
-### Data and Image Paths
+### Image Directory
 
-The system supports three deployment modes, automatically detected:
+Images should be placed in the `all_images/` folder within the project directory. The path is configured in `config.py`:
 
-#### 1. **Local Development Mode** (default when `DATA_ROOT` is not set)
-- Uses hardcoded Mac paths in `config.py`
-- Modify these paths in `config.py` for your local setup:
-  ```python
-  ROOT_ABS = Path("/Users/williamhu/Desktop/poem-work/Tangshi-Bench/imgs/ready")
-  IMAGE_DIR = Path("/Users/williamhu/Desktop/poem-work/tangshi-data/all_images")
-  ```
+```python
+IMAGE_DIR = BASE_DIR / "all_images"
+```
 
-#### 2. **Remote Deployment Mode** (when `DATA_ROOT` is set)
-- Set the `DATA_ROOT` environment variable to your data folder path
-- The system will look for:
-  - Images in: `{DATA_ROOT}/Nano/`
-  - CSV file: `{DATA_ROOT}/poem_pool.csv` or `{BASE_DIR}/poem_pool.csv`
-  - Excel file: `{DATA_ROOT}/tangshi_300_unique_name.xlsx` or `{BASE_DIR}/tangshi_300_unique_name.xlsx`
-
-#### 3. **HuggingFace Spaces Mode** (when `SPACE_ID` or `SYSTEM=spaces` is set)
-- Automatically downloads dataset from private HuggingFace repository
-- Requires `Token` secret to be set in Space Settings
+If you need to use a different location, update this path in `config.py`.
 
 ### Image Naming Convention
 
@@ -164,16 +130,11 @@ Example:
 黄鹤楼送孟浩然之广陵_nano.png
 ```
 
-### Environment Variables
+### Optional Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DATA_ROOT` | No | Mac path | Path to data folder with `Nano/` subdirectory |
-| `CSV_PATH` | No | Auto-detect | Path to `poem_pool.csv` (checks `DATA_ROOT` then `BASE_DIR`) |
-| `XLSX_PATH` | No | Auto-detect | Path to Excel file (checks `DATA_ROOT` then `BASE_DIR`) |
-| `SPACE_ID` | No | - | If set, enables HuggingFace Spaces mode |
-| `SYSTEM` | No | - | If `"spaces"`, enables HuggingFace Spaces mode |
-| `Token` | Yes (HF Spaces) | - | HuggingFace token for private dataset access |
+| `CSV_PATH` | No | `{BASE_DIR}/poem_pool.csv` | Path to `poem_pool.csv` |
 
 ## Data Files
 
@@ -345,11 +306,23 @@ python tests/test_frontend_user_login.py
 
 ## Troubleshooting
 
-1. **Can't find images**: Check `IMAGE_DIR` path in `config.py` or set `DATA_ROOT` environment variable
-2. **CSV not found**: Ensure `poem_pool.csv` is in the project root or set `CSV_PATH` environment variable
-3. **Database errors**: Check file permissions in the project directory
-4. **Port already in use**: Change the port in `app.py` or kill the process using port 7860
+1. **Can't find images**: 
+   - Ensure images are in the `all_images/` folder within the project directory
+   - Check that image filenames follow the pattern `{poem_title}_{type}.png`
+   - Verify `IMAGE_DIR` path in `config.py` points to your image directory
 
-## License
+2. **CSV not found**: 
+   - Ensure `poem_pool.csv` is in the project root
+   - Or set `CSV_PATH` environment variable to point to the file
 
-[Add your license information here]
+3. **Database errors**: 
+   - Check file permissions in the project directory
+   - Ensure the project directory is writable
+
+4. **Port already in use**: 
+   - Change the port in `app.py` (line 26) or kill the process using port 7860
+
+5. **No images loaded**: 
+   - Verify images exist in `all_images/` directory
+   - Check that image filenames match poem titles in `poem_pool.csv`
+   - Ensure image type suffix is one of: `gpt`, `mj`, or `nano`

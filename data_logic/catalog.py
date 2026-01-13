@@ -2,7 +2,7 @@ import os
 import random
 import pandas as pd
 from pathlib import Path
-from config import CSV_PATH, IMAGE_DIR, XLSX_PATH
+from config import CSV_PATH, IMAGE_DIR
 
 def build_catalog(image_dir: str = IMAGE_DIR):
     """
@@ -50,31 +50,18 @@ def build_catalog(image_dir: str = IMAGE_DIR):
     
     return catalog
 
-def load_poem_info(xlsx_path: str = XLSX_PATH, csv_path: str = CSV_PATH):
+def load_poem_info(csv_path: str = CSV_PATH):
     """
-    Load poem information from Excel file.
-    Falls back to CSV if Excel is not available (for backward compatibility).
+    Load poem information from CSV file.
     
     Returns:
       { title: { "author": ..., "content": ..., "similar_titles": [A, B, C] } }
     """
-    poem_info = {}
+    if not Path(csv_path).exists():
+        raise FileNotFoundError(f"CSV file not found: {csv_path}")
     
-    # Try Excel first
-    if xlsx_path and Path(xlsx_path).exists():
-        try:
-            df = pd.read_excel(xlsx_path, engine='openpyxl')
-        except Exception as e:
-            # Fall back to CSV if Excel read fails
-            if csv_path and Path(csv_path).exists():
-                df = pd.read_csv(csv_path)
-            else:
-                raise FileNotFoundError(f"Neither Excel file ({xlsx_path}) nor CSV file ({csv_path}) found")
-    elif csv_path and Path(csv_path).exists():
-        # Fall back to CSV
-        df = pd.read_csv(csv_path)
-    else:
-        raise FileNotFoundError(f"Neither Excel file ({xlsx_path}) nor CSV file ({csv_path}) found")
+    df = pd.read_csv(csv_path)
+    poem_info = {}
     
     for _, row in df.iterrows():
         title = str(row.get("Title", "")).strip()

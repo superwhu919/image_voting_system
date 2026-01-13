@@ -3,7 +3,6 @@ import sqlite3
 import threading
 from datetime import datetime
 from config import USERS_DB_PATH, EVALUATIONS_DB_PATH
-from utils.flush import maybe_flush
 
 WRITE_LOCK = threading.Lock()
 
@@ -247,7 +246,6 @@ def write_evaluation(
             ),
         )
         EVALUATIONS_DB.commit()
-        maybe_flush()
     return ts
 
 def get_image_rating_count(image_path: str) -> int:

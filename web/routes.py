@@ -8,7 +8,7 @@ import os
 from urllib.parse import unquote
 from urllib.parse import unquote
 
-from config import IMAGE_DIR, ROOT_ABS
+from config import IMAGE_DIR
 from core import start_session, reveal_poem, update_phase2_answer, submit_evaluation, remaining
 from core.evaluation import IMAGE_SELECTION_SYSTEM
 from data_logic.catalog import CATALOG
