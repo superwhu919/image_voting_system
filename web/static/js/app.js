@@ -18,6 +18,7 @@ let currentSession = {
     target_letter: null,
     phase1_choice: null,
     phase1_start_ms: null,
+    phase1_answers: {},  // Answers to q1-2 and q1-3
     phase2_start_ms: null,
     phase2_answers: {},
     answer_revealed: false,  // Track if answer has been revealed
@@ -168,7 +169,6 @@ function handleStart(userInfoOverride = null) {
         gender: userGender,
         education: userEducation
     };
-    console.log('Sending start request:', requestData);
     
     fetch(`${API_BASE}/start`, {
         method: 'POST',
@@ -178,11 +178,9 @@ function handleStart(userInfoOverride = null) {
         body: JSON.stringify(requestData),
     })
     .then(response => {
-        console.log('Start response status:', response.status);
         return response.json();
     })
     .then(data => {
-        console.log('Start response data:', data);
         if (data.status === 'success') {
             // Disable user input field after successful start
             if (userInput) {
@@ -214,10 +212,12 @@ function handleStart(userInfoOverride = null) {
                 options_data: data.options_data,
                 target_letter: data.target_letter,
                 phase1_choice: null,
+                phase1_answers: {},
                 phase1_start_ms: data.phase1_start_ms,
                 phase2_start_ms: data.phase2_start_ms,
                 phase2_answers: {},
                 answer_revealed: false,
+                questions: {}, // Initialize questions object
             };
             updateUIForPhase1(data);
             showStatus(data.message, 'success');
@@ -323,19 +323,132 @@ function handlePhase1Choice(event) {
     const choice = event.target.value;
     currentSession.phase1_choice = choice;
     
-    // Enable reveal button and add visual feedback
+    // Questions are already shown, just check if all are answered
+    // (q1-2 and q1-3 are shown immediately when Phase 1 loads)
+    checkPhase1Complete();
+}
+
+function showPhase1Questions() {
+    const phase1QuestionsContainer = document.getElementById('phase1-questions');
+    const phase1QuestionsContent = document.getElementById('phase1-questions-container');
+    
+    if (!phase1QuestionsContainer || !phase1QuestionsContent) {
+        return;
+    }
+    
+    // Get questions from current session data
+    const questions = currentSession.questions || {};
+    const q1_2 = questions['q1-2'];
+    const q1_3 = questions['q1-3'];
+    
+    if (!q1_2 || !q1_3) {
+        return;
+    }
+    
+    let html = '';
+    
+    // Render q1-2
+    if (q1_2) {
+        html += renderPhase1Question('q1-2', q1_2);
+    }
+    
+    // Render q1-3
+    if (q1_3) {
+        html += renderPhase1Question('q1-3', q1_3);
+    }
+    
+    phase1QuestionsContent.innerHTML = html;
+    phase1QuestionsContainer.classList.remove('hidden');
+    // Override !important from .hidden class
+    phase1QuestionsContainer.style.setProperty('display', 'block', 'important');
+    
+    // Attach event listeners
+    document.querySelectorAll('input[name^="q1-"]').forEach(radio => {
+        radio.addEventListener('change', handlePhase1Answer);
+    });
+}
+
+function renderPhase1Question(qId, question) {
+    if (!question || !question.question) {
+        return '';
+    }
+    
+    const questionId = question.id ? question.id.toUpperCase() : qId.toUpperCase();
+    
+    let html = `
+        <div class="phase1-question mb-3">
+            <label><strong>${questionId}.</strong> ${escapeHtml(question.question)}</label>
+    `;
+    
+    if (question.options && Array.isArray(question.options)) {
+        for (const option of question.options) {
+            html += `
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="${qId}" 
+                           id="${qId}_${option.value}" value="${option.value}">
+                    <label class="form-check-label" for="${qId}_${option.value}">
+                        ${escapeHtml(option.label)}
+                    </label>
+                </div>
+            `;
+        }
+    }
+    
+    html += '</div>';
+    return html;
+}
+
+function handlePhase1Answer(event) {
+    const qId = event.target.name;
+    const answer = event.target.value;
+    
+    if (!currentSession.phase1_answers) {
+        currentSession.phase1_answers = {};
+    }
+    
+    currentSession.phase1_answers[qId] = answer;
+    
+    // Check if all Phase 1 questions are answered
+    checkPhase1Complete();
+}
+
+function checkPhase1Complete() {
+    // Check if poem is selected
+    if (!currentSession.phase1_choice) {
+        return;
+    }
+    
+    // Check if q1-2 and q1-3 are answered
+    const phase1Answers = currentSession.phase1_answers || {};
+    const q1_2_answered = phase1Answers['q1-2'];
+    const q1_3_answered = phase1Answers['q1-3'];
+    
     const revealBtn = document.getElementById('reveal-btn');
     if (revealBtn) {
-        revealBtn.disabled = false;
-        revealBtn.classList.remove('disabled');
-        revealBtn.classList.remove('btn-secondary');
-        revealBtn.classList.add('btn-primary');
+        if (q1_2_answered && q1_3_answered) {
+            revealBtn.disabled = false;
+            revealBtn.classList.remove('disabled');
+            revealBtn.classList.remove('btn-secondary');
+            revealBtn.classList.add('btn-primary');
+        } else {
+            revealBtn.disabled = true;
+            revealBtn.classList.add('disabled');
+            revealBtn.classList.remove('btn-primary');
+            revealBtn.classList.add('btn-secondary');
+        }
     }
 }
 
 function handleReveal() {
     if (!currentSession.phase1_choice) {
         showStatus('请先选择一首诗。', 'error');
+        return;
+    }
+    
+    // Check if all Phase 1 questions are answered
+    const phase1Answers = currentSession.phase1_answers || {};
+    if (!phase1Answers['q1-2'] || !phase1Answers['q1-3']) {
+        showStatus('请先回答所有问题。', 'error');
         return;
     }
     
@@ -351,6 +464,7 @@ function handleReveal() {
             options_dict: currentSession.options_dict,
             target_letter: currentSession.target_letter,
             phase1_choice: currentSession.phase1_choice,
+            phase1_answers: currentSession.phase1_answers,
             phase1_start_ms: currentSession.phase1_start_ms,
         }),
     })
@@ -384,6 +498,15 @@ function handleReveal() {
             });
             // Also disable labels to prevent clicking them
             document.querySelectorAll('label[for^="radio_"]').forEach(label => {
+                label.style.pointerEvents = 'none';
+                label.style.cursor = 'not-allowed';
+            });
+            // Disable Phase 1 additional questions
+            document.querySelectorAll('input[name^="q1-"]').forEach(radio => {
+                radio.disabled = true;
+                radio.style.pointerEvents = 'none';
+            });
+            document.querySelectorAll('label[for^="q1-"]').forEach(label => {
                 label.style.pointerEvents = 'none';
                 label.style.cursor = 'not-allowed';
             });
@@ -464,6 +587,7 @@ function handleSubmit() {
             options_dict: currentSession.options_dict,
             target_letter: currentSession.target_letter,
             phase1_choice: currentSession.phase1_choice,
+            phase1_answers: currentSession.phase1_answers || {},
             phase1_response_ms: 0, // Will be calculated on server
             phase2_answers: currentSession.phase2_answers,
             phase2_start_ms: currentSession.phase2_start_ms,
@@ -490,10 +614,12 @@ function handleSubmit() {
                 options_data: data.options_data,
                 target_letter: data.target_letter,
                 phase1_choice: null,
+                phase1_answers: {},
                 phase1_start_ms: data.phase1_start_ms,
                 phase2_start_ms: data.phase2_start_ms,
                 phase2_answers: {},
                 answer_revealed: false,
+                questions: data.questions || currentSession.questions || {},
             };
             updateUIForPhase1(data);
             showStatus(data.message, 'success');
@@ -573,13 +699,33 @@ function updateUIForPhase1(data) {
         evalBox.classList.remove('hidden');
     }
     
-    // Update Phase 1 question text from questions.json (q0)
+    // Store questions in session if provided
+    if (data.questions) {
+        currentSession.questions = data.questions;
+    } else {
+        // Fallback: construct questions object from individual question fields
+        currentSession.questions = currentSession.questions || {};
+        if (data['q1-1']) {
+            currentSession.questions['q1-1'] = data['q1-1'];
+        }
+        if (data['q1-2']) {
+            currentSession.questions['q1-2'] = data['q1-2'];
+        }
+        if (data['q1-3']) {
+            currentSession.questions['q1-3'] = data['q1-3'];
+        }
+    }
+    
+    // Update Phase 1 question text from questions.json (q1-1)
     const phase1Question = document.getElementById('phase1-question');
-    if (phase1Question && data.q0 && data.q0.question) {
-        const questionId = data.q0.id ? data.q0.id.toUpperCase() : 'Q0';
-        const newText = `<strong>${questionId}. ${escapeHtml(data.q0.question)}</strong>`;
+    if (phase1Question && currentSession.questions['q1-1'] && currentSession.questions['q1-1'].question) {
+        const questionId = currentSession.questions['q1-1'].id ? currentSession.questions['q1-1'].id.toUpperCase() : 'Q1-1';
+        const newText = `<strong>${questionId}. ${escapeHtml(currentSession.questions['q1-1'].question)}</strong>`;
         phase1Question.innerHTML = newText;
     }
+    
+    // Show all Phase 1 questions (q1-1, q1-2, q1-3) immediately
+    showPhase1Questions();
     
     // Update image - use image_url if available, otherwise construct from image_path
     const imageUrl = data.image_url || currentSession.image_url || `/static/images/${data.image_path.split('/').pop()}`;
@@ -593,6 +739,9 @@ function updateUIForPhase1(data) {
     if (phase2Box) {
         phase2Box.classList.add('hidden');
     }
+    
+    // Phase 1 questions (q1-2, q1-3) will be shown by showPhase1Questions() called in updateUIForPhase1
+    // Don't hide them here - they should be visible from the start
     
     // Reset reveal button
     const revealBtn = document.getElementById('reveal-btn');
@@ -626,6 +775,19 @@ function updateUIForPhase1(data) {
 }
 
 function updateUIForPhase2(data) {
+    // Hide Phase 1 questions container - MUST be hidden before Phase 2
+    const phase1QuestionsContainer = document.getElementById('phase1-questions');
+    if (phase1QuestionsContainer) {
+        phase1QuestionsContainer.classList.add('hidden');
+        phase1QuestionsContainer.style.display = 'none'; // Force hide
+    }
+    
+    // Also hide the Phase 1 question container content
+    const phase1QuestionsContent = document.getElementById('phase1-questions-container');
+    if (phase1QuestionsContent) {
+        phase1QuestionsContent.innerHTML = ''; // Clear content
+    }
+    
     // Show phase 2 box
     const phase2Box = document.getElementById('phase2-box');
     if (phase2Box) {
@@ -683,8 +845,6 @@ function updateUIForPhase2(data) {
     }
     
     // Render questions if not already rendered
-    console.log('Questions received from server:', Object.keys(data.questions || {}));
-    console.log('q13 in questions:', 'q13' in (data.questions || {}));
     renderQuestions(data.questions);
     
     // Reset submit button
@@ -696,7 +856,7 @@ function updateUIForPhase2(data) {
     
     // Reset phase 2 answers
     currentSession.phase2_answers = {};
-    document.querySelectorAll('input[name^="q"]').forEach(radio => {
+    document.querySelectorAll('input[name^="q2-"]').forEach(radio => {
         radio.checked = false;
     });
 }
@@ -789,12 +949,10 @@ function updatePoemChoices(optionsData) {
 function renderQuestions(questions) {
     const questionsContainer = document.getElementById('phase2-questions');
     if (!questionsContainer) {
-        console.error('phase2-questions container not found!');
         return;
     }
     
     if (!questions) {
-        console.error('No questions object provided!');
         return;
     }
     
@@ -803,32 +961,26 @@ function renderQuestions(questions) {
     
     let html = '';
     
-    // Get all question IDs except q0, sorted numerically
+    // Get all Phase 2 question IDs (q2-*), sorted numerically
     const questionIds = Object.keys(questions)
-        .filter(qId => qId !== 'q0')
+        .filter(qId => qId.startsWith('q2-'))
         .sort((a, b) => {
-            const numA = parseInt(a.substring(1)) || 999;
-            const numB = parseInt(b.substring(1)) || 999;
+            // Extract number from q2-X format
+            const numA = parseInt(a.split('-')[1]) || 999;
+            const numB = parseInt(b.split('-')[1]) || 999;
             return numA - numB;
         });
-    
-    console.log('Question IDs to render:', questionIds);
-    console.log('q13 in questionIds:', questionIds.includes('q13'));
     
     // Render all Phase 2 questions dynamically
     for (const qId of questionIds) {
         if (questions[qId]) {
             html += renderQuestion(qId, questions[qId]);
-        } else {
-            console.warn(`Question ${qId} not found in questions object`);
         }
     }
-    
-    console.log('Rendered HTML length:', html.length);
     questionsContainer.innerHTML = html;
     
-    // Attach event listeners
-    document.querySelectorAll('input[name^="q"]').forEach(radio => {
+    // Attach event listeners only to Phase 2 questions (q2-*)
+    document.querySelectorAll('input[name^="q2-"]').forEach(radio => {
         radio.addEventListener('change', handlePhase2Answer);
     });
 }

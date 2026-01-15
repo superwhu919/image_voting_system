@@ -30,6 +30,7 @@ class RevealRequest(BaseModel):
     options_dict: dict
     target_letter: str
     phase1_choice: str
+    phase1_answers: dict = {}
     phase1_start_ms: str
 
 
@@ -46,10 +47,11 @@ class SubmitRequest(BaseModel):
     user_education: str = ""
     poem_title: str
     image_path: str
-    image_type: str = ""  # gpt, mj, or nano
+    image_type: str = ""  # gpt, mj, nano, or seedream
     options_dict: dict
     target_letter: str
     phase1_choice: str
+    phase1_answers: dict = {}
     phase1_response_ms: int
     phase2_answers: dict
     phase2_start_ms: str
@@ -161,6 +163,7 @@ async def api_reveal(request: RevealRequest):
             options_dict=request.options_dict,
             target_letter=request.target_letter,
             phase1_choice=request.phase1_choice,
+            phase1_answers=request.phase1_answers,
             phase1_start_ms=request.phase1_start_ms,
         )
         return JSONResponse(content=result)
@@ -197,6 +200,7 @@ async def api_submit(request: SubmitRequest):
             options_dict=request.options_dict,
             target_letter=request.target_letter,
             phase1_choice=request.phase1_choice,
+            phase1_answers=request.phase1_answers,
             phase1_response_ms=request.phase1_response_ms,
             phase2_answers=request.phase2_answers,
             phase2_start_ms=request.phase2_start_ms,

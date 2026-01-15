@@ -15,7 +15,7 @@ def _extract_image_type(image_path: str) -> str:
     if last_underscore_idx == -1:
         return ""
     image_type = filename[last_underscore_idx + 1:]
-    return image_type if image_type in {"gpt", "mj", "nano"} else ""
+    return image_type if image_type in {"gpt", "mj", "nano", "seedream"} else ""
 
 
 def _init_image_selection_system() -> ImageSelectionSystem:

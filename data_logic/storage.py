@@ -198,21 +198,31 @@ def write_evaluation(
     image_path,
     image_type,
     phase1_choice,
-    phase1_response_ms,
-    phase2_answers,  # dict with keys q1, q2, ..., q12
-    phase2_response_ms,
-    total_response_ms
+    phase1_answers=None,  # dict with keys q1-2, q1-3 (optional, not yet stored in DB)
+    phase1_response_ms=0,
+    phase2_answers=None,  # dict with keys q2-1, q2-2, ..., q2-14
+    phase2_response_ms=0,
+    total_response_ms=0
 ):
     """
     Write a complete evaluation to the database.
     phase2_answers should be a dict like:
     {
-        "q1": "A",
-        "q2": "Present",
+        "q2-1": "A",
+        "q2-2": "Present",
         ...
-        "q12": "Refined and expressive"
+        "q2-14": "Refined and expressive"
     }
+    phase1_answers should be a dict like:
+    {
+        "q1-2": "Very confident",
+        "q1-3": "Holistic"
+    }
+    Note: phase1_answers are not yet stored in DB schema, but accepted for future use.
     """
+    if phase2_answers is None:
+        phase2_answers = {}
+    
     ts = datetime.utcnow().isoformat()
     with WRITE_LOCK:
         EVALUATIONS_DB.execute(
@@ -230,18 +240,18 @@ def write_evaluation(
                 poem_title, image_path, image_type,
                 phase1_choice, phase1_response_ms,
                 phase1_choice,  # q0_answer is the same as phase1_choice (A/B/C/D)
-                phase2_answers.get("q1", ""),
-                phase2_answers.get("q2", ""),
-                phase2_answers.get("q3", ""),
-                phase2_answers.get("q4", ""),
-                phase2_answers.get("q5", ""),
-                phase2_answers.get("q6", ""),
-                phase2_answers.get("q7", ""),
-                phase2_answers.get("q8", ""),
-                phase2_answers.get("q9", ""),
-                phase2_answers.get("q10", ""),
-                phase2_answers.get("q11", ""),
-                phase2_answers.get("q12", ""),
+                phase2_answers.get("q2-1", ""),  # q1_answer
+                phase2_answers.get("q2-2", ""),  # q2_answer
+                phase2_answers.get("q2-3", ""),  # q3_answer
+                phase2_answers.get("q2-4", ""),  # q4_answer
+                phase2_answers.get("q2-5", ""),  # q5_answer
+                phase2_answers.get("q2-6", ""),  # q6_answer
+                phase2_answers.get("q2-7", ""),  # q7_answer
+                phase2_answers.get("q2-8", ""),  # q8_answer
+                phase2_answers.get("q2-9", ""),  # q9_answer
+                phase2_answers.get("q2-10", ""),  # q10_answer
+                phase2_answers.get("q2-11", ""),  # q11_answer
+                phase2_answers.get("q2-12", ""),  # q12_answer (q2-13 and q2-14 not stored in current schema)
                 phase2_response_ms, total_response_ms
             ),
         )

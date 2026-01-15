@@ -8,6 +8,7 @@ local_readme.txt
 
 # Data directories
 all_images/
+*.zip
 
 # Database files
 *.db

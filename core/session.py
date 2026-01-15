@@ -11,9 +11,18 @@ from core.evaluation import get_evaluation_item, format_poem_data, format_poem_f
 with open(QUESTIONS_JSON_PATH, 'r', encoding='utf-8') as f:
     QUESTIONS = json.load(f)
 
-# Get list of Phase 2 question IDs (all questions except q0)
-PHASE2_QUESTION_IDS = sorted([q_id for q_id in QUESTIONS.keys() if q_id != "q0"], 
-                              key=lambda x: int(x[1:]) if x[1:].isdigit() else 999)
+# Get list of Phase 2 question IDs (all q2-* questions, excluding stage 1 questions q1-*)
+def _sort_question_key(q_id):
+    """Sort key for questions: q2-1, q2-2, etc."""
+    if q_id.startswith("q2-"):
+        try:
+            return int(q_id.split("-")[1])
+        except (ValueError, IndexError):
+            return 999
+    return 999
+
+PHASE2_QUESTION_IDS = sorted([q_id for q_id in QUESTIONS.keys() if q_id.startswith("q2-")], 
+                              key=_sort_question_key)
 
 
 def remaining(uid: str) -> int:
@@ -128,7 +137,9 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
                 "user_limit": user_limit,
                 "phase1_start_ms": str(now_ms),
                 "phase2_start_ms": str(now_ms),
-                "q0": QUESTIONS.get("q0", {}),
+                "q1-1": QUESTIONS.get("q1-1", {}),
+                "q1-2": QUESTIONS.get("q1-2", {}),
+                "q1-3": QUESTIONS.get("q1-3", {}),
             }
         
         # Demographics don't match - ask for different name
@@ -179,12 +190,14 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
         "user_limit": user_limit,
         "phase1_start_ms": str(now_ms),
         "phase2_start_ms": str(now_ms),
-        "q0": QUESTIONS.get("q0", {}),
+        "q1-1": QUESTIONS.get("q1-1", {}),
+        "q1-2": QUESTIONS.get("q1-2", {}),
+        "q1-3": QUESTIONS.get("q1-3", {}),
     }
 
 
 def reveal_poem(uid: str, poem_title: str, image_path: str, options_dict: dict, 
-                target_letter: str, phase1_choice: str, phase1_start_ms: str) -> dict:
+                target_letter: str, phase1_choice: str, phase1_answers: dict = None, phase1_start_ms: str = None) -> dict:
     """
     Reveal the correct poem and show Phase 2 questions.
     Returns dict with reveal data.
@@ -208,6 +221,9 @@ def reveal_poem(uid: str, poem_title: str, image_path: str, options_dict: dict,
     is_correct = (phase1_choice == target_letter)
     status_text = f"正确答案是 **{target_letter}**。{'✓ 正确！' if is_correct else '✗ 不正确。'}"
     
+    # Only send Phase 2 questions (q2-*) to Phase 2
+    phase2_questions = {q_id: QUESTIONS[q_id] for q_id in QUESTIONS.keys() if q_id.startswith("q2-")}
+    
     return {
         "status": "success",
         "message": status_text,
@@ -217,7 +233,7 @@ def reveal_poem(uid: str, poem_title: str, image_path: str, options_dict: dict,
         "phase1_choice": phase1_choice,
         "phase1_response_ms": phase1_response_ms,
         "phase2_start_ms": str(now_ms),
-        "questions": QUESTIONS,
+        "questions": phase2_questions,
     }
 
 
@@ -242,8 +258,8 @@ def update_phase2_answer(q_id: str, answer: str, phase2_answers: dict) -> dict:
 def submit_evaluation(
     uid: str, user_age: int, user_gender: str, user_education: str,
     poem_title: str, image_path: str, image_type: str, options_dict: dict, target_letter: str,
-    phase1_choice: str, phase1_response_ms: int,
-    phase2_answers: dict, phase2_start_ms: str, phase1_start_ms: str
+    phase1_choice: str, phase1_answers: dict = None, phase1_response_ms: int = 0,
+    phase2_answers: dict = None, phase2_start_ms: str = None, phase1_start_ms: str = None
 ) -> dict:
     """
     Submit complete evaluation (Phase 1 + Phase 2).
@@ -295,6 +311,8 @@ def submit_evaluation(
             image_type = image_data.get("image_type", "")
     
     # Write evaluation to database
+    # Note: phase1_answers (q1-2, q1-3) are passed but not yet stored in DB schema
+    # This can be added later if needed
     write_evaluation(
         uid=uid,
         user_age=user_age,
@@ -304,8 +322,9 @@ def submit_evaluation(
         image_path=image_path,
         image_type=image_type or "",
         phase1_choice=phase1_choice,
+        phase1_answers=phase1_answers or {},
         phase1_response_ms=phase1_ms,
-        phase2_answers=phase2_answers,
+        phase2_answers=phase2_answers or {},
         phase2_response_ms=phase2_ms,
         total_response_ms=total_ms,
     )
@@ -351,5 +370,7 @@ def submit_evaluation(
         "user_limit": user_limit,
         "phase1_start_ms": str(now_ms),
         "phase2_start_ms": str(now_ms),
-        "q0": QUESTIONS.get("q0", {}),
+        "q1-1": QUESTIONS.get("q1-1", {}),
+        "q1-2": QUESTIONS.get("q1-2", {}),
+        "q1-3": QUESTIONS.get("q1-3", {}),
     }

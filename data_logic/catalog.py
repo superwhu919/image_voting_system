@@ -7,7 +7,7 @@ from config import CSV_PATH, IMAGE_DIR
 def build_catalog(image_dir: str = IMAGE_DIR):
     """
     Scan image directory and build catalog from filenames.
-    Images are named as: {poem_title}_{type}.png where type is gpt, mj, or nano.
+    Images are named as: {poem_title}_{type}.png where type is gpt, mj, nano, or seedream.
     
     Returns: { image_path: {"poem_title": str, "image_type": str} }
     """
@@ -16,7 +16,7 @@ def build_catalog(image_dir: str = IMAGE_DIR):
         raise FileNotFoundError(f"Image directory not found: {image_dir}")
     
     catalog = {}
-    valid_types = {"gpt", "mj", "nano"}
+    valid_types = {"gpt", "mj", "nano", "seedream"}
     
     # Scan all PNG files in directory
     for image_file in image_dir_path.glob("*.png"):
@@ -48,6 +48,7 @@ def build_catalog(image_dir: str = IMAGE_DIR):
     if not catalog:
         raise RuntimeError(f"No valid images found in {image_dir}. Expected format: {{poem_title}}_{{type}}.png")
     
+    print(f"Built catalog with {len(catalog)} images from {image_dir}")
     return catalog
 
 def load_poem_info(csv_path: str = CSV_PATH):

@@ -55,7 +55,8 @@ class ImageSelectionSystem:
     """
     Main image selection system with 6 priority queues.
     
-    Each queue contains all images, independently shuffled.
+    Each queue contains all images found in the catalog/CSV, independently shuffled.
+    The number of images is determined dynamically by scanning the input folder.
     Selection follows priority: Q1 -> Q2 -> ... -> Q6
     """
     
