@@ -19,7 +19,7 @@ def build_catalog(image_dir: str = IMAGE_DIR):
     valid_types = {"gpt", "mj", "nano", "seedream"}
     
     # Scan all PNG files in directory
-    for image_file in image_dir_path.glob("*.png"):
+    for image_file in image_dir_path.glob("*.jpg"):
         filename = image_file.name
         # Remove .png extension
         name_without_ext = filename[:-4]
