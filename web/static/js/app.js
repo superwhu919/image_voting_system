@@ -837,9 +837,10 @@ function updateUIForPhase2(data) {
         modalImg.src = currentSession.image_url;
         
         // Set container image
+        // Don't set max-width in inline style - let CSS handle responsive sizing
         phase2ImageContainer.innerHTML = `
             <img class="eval-image" src="${currentSession.image_url}" 
-                 style="width: 100%; max-width: 500px; height: auto; display: block; cursor: zoom-in;"
+                 style="width: 100%; height: auto; display: block; cursor: zoom-in;"
                  onclick="document.getElementById('image-modal').classList.add('open')" />
         `;
     }

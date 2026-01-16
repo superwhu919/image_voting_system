@@ -101,9 +101,9 @@
         <h2>第二阶段：揭示评估</h2>
         <p>（现在显示正确的目标诗与图像。）</p>
         
-        <div class="phase2-content-wrapper" style="display: flex; gap: 20px; align-items: flex-start;">
+        <div class="phase2-content-wrapper">
             <!-- Left side: Poem and Questions -->
-            <div style="flex: 1; min-width: 0;">
+            <div class="phase2-questions-wrapper">
                 <div id="poem-revealed" class="mb-4">
                     <h4 id="poem-title"></h4>
                     <p id="poem-author"></p>
@@ -118,7 +118,7 @@
             </div>
             
             <!-- Right side: Image and Poem (duplicate) -->
-            <div class="phase2-image-wrapper" style="flex: 0 0 500px; position: relative;">
+            <div class="phase2-image-wrapper">
                 <div id="phase2-image-container"></div>
                 <div id="poem-revealed-right" class="mb-4 mt-4">
                     <h4 id="poem-title-right"></h4>

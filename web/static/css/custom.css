@@ -28,6 +28,7 @@
 /* Phase 2 - ensure no overflow constraints */
 #phase2-box {
   overflow: visible !important;
+  width: 100%;
 }
 
 /* Phase 2 wrapper - ensures proper scrolling context */
@@ -35,17 +36,30 @@
   position: relative;
   overflow: visible !important;
   min-height: 100vh; /* Ensure there's enough height for scrolling */
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  align-items: flex-start;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* Phase 2 image wrapper - sticky positioning applied here (contains image and poem) */
+/* Phase 2 questions wrapper */
+.phase2-questions-wrapper {
+  flex: 1;
+  min-width: 0;
+  display: block;
+}
+
+/* Phase 2 image wrapper - NO sticky by default, only on desktop */
 .phase2-image-wrapper {
-  position: -webkit-sticky !important;
-  position: sticky !important;
-  top: 20px !important;
-  align-self: flex-start !important;
-  flex-shrink: 0 !important;
-  z-index: 10 !important;
-  width: 500px !important;
+  position: relative;
+  align-self: flex-start;
+  flex-shrink: 0;
+  flex-grow: 0;
+  z-index: 10;
+  display: block;
+  float: none;
 }
 
 /* Phase 2 image container */
@@ -63,6 +77,347 @@
   object-fit: contain;
   display: block;
   margin: 0;
+}
+
+/* Desktop styles - ensure side-by-side layout */
+@media (min-width: 769px) {
+  /* Phase 1: Ensure side-by-side layout on desktop */
+  #evaluation-box .row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+  }
+  
+  #evaluation-box .col-md-6 {
+    flex: 0 0 50% !important;
+    max-width: 50% !important;
+    width: 50% !important;
+  }
+  
+  /* Phase 1 image container - desktop */
+  #image-container {
+    position: sticky !important;
+    top: 20px !important;
+    min-height: 500px !important;
+  }
+  
+  .eval-image {
+    width: 500px !important;
+    height: 500px !important;
+    max-width: 100% !important;
+  }
+  
+  /* Phase 2: Ensure side-by-side layout on desktop */
+  #phase2-box {
+    width: 100% !important;
+  }
+  
+  .phase2-content-wrapper {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-start !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-wrap: nowrap !important;
+  }
+  
+  .phase2-questions-wrapper {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+    display: block !important;
+  }
+  
+  .phase2-image-wrapper {
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: 20px !important;
+    flex: 0 0 500px !important;
+    width: 500px !important;
+    max-width: 500px !important;
+    min-width: 500px !important;
+    display: block !important;
+  }
+  
+  /* Ensure image container displays properly */
+  #phase2-image-container {
+    display: block !important;
+    width: 100% !important;
+  }
+  
+  #phase2-image-container img,
+  #phase2-image-container .eval-image {
+    display: block !important;
+    width: 100% !important;
+    max-width: 500px !important;
+  }
+}
+
+/* Mobile responsive styles - MUST come after desktop to override */
+@media screen and (max-width: 768px) {
+  /* Phase 1: Stack image and choices vertically on mobile */
+  #evaluation-box .row {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  
+  #evaluation-box .col-md-6 {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    margin-bottom: 25px !important;
+  }
+  
+  /* Make Phase 1 images responsive */
+  .eval-image,
+  img.eval-image {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 400px !important;
+    object-fit: contain !important;
+  }
+  
+  #image-container {
+    position: relative !important;
+    min-height: auto !important;
+    justify-content: center !important;
+    display: flex !important;
+    width: 100% !important;
+  }
+  
+  #image-container img {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  
+  /* Phase 1 poem choices - better spacing on mobile */
+  #poem-choices {
+    width: 100% !important;
+  }
+  
+  .poem-choice-container {
+    margin-bottom: 15px !important;
+    padding: 12px !important;
+  }
+  
+  /* Phase 1 questions - better spacing */
+  #phase1-questions {
+    margin-top: 20px !important;
+    width: 100% !important;
+  }
+  
+  #phase1-questions-container {
+    width: 100% !important;
+  }
+  
+  /* Phase 2: Side by side 50/50 split on mobile - MUST override everything */
+  /* First, ensure #phase2-box itself doesn't create sticky context */
+  #phase2-box {
+    position: relative !important;
+    overflow: visible !important;
+  }
+  
+  #phase2-box .phase2-content-wrapper {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+    align-items: flex-start !important;
+    width: 100% !important;
+    position: relative !important;
+    overflow: visible !important;
+  }
+  
+  #phase2-box .phase2-questions-wrapper {
+    flex: 0 0 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    padding-right: 4px !important;
+    position: relative !important;
+  }
+  
+  /* Image wrapper - 50% width on mobile - STICKY so it stays visible when scrolling */
+  /* This MUST come after desktop media query to override sticky */
+  #phase2-box .phase2-image-wrapper,
+  .phase2-content-wrapper .phase2-image-wrapper,
+  .phase2-image-wrapper {
+    /* Use sticky positioning so image stays visible when scrolling through questions */
+    position: -webkit-sticky !important;
+    position: sticky !important;
+    top: 10px !important;
+    align-self: flex-start !important;
+    flex: 0 0 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    padding-left: 4px !important;
+  }
+  
+  /* Image container - allow sticky behavior */
+  #phase2-image-container {
+    position: relative !important;
+    width: 100% !important;
+  }
+  
+  /* Ensure parent allows sticky context */
+  .phase2-content-wrapper {
+    position: relative !important;
+    overflow: visible !important;
+  }
+  
+  /* Make Phase 2 images responsive on mobile - fit within 50% width */
+  #phase2-image-container img,
+  #phase2-image-container .eval-image,
+  #phase2-image-container img.eval-image,
+  .phase2-image-wrapper img,
+  .phase2-image-wrapper .eval-image,
+  .phase2-image-wrapper img.eval-image {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    object-fit: contain !important;
+    display: block !important;
+  }
+  
+  /* Ensure container fits properly */
+  #phase2-image-container {
+    width: 100% !important;
+    overflow: visible !important;
+  }
+  
+  /* Make sure poem content in right column doesn't break sticky behavior */
+  .phase2-image-wrapper #poem-revealed-right {
+    width: 100% !important;
+    margin-top: 15px !important;
+  }
+  
+  /* Make poem content smaller on mobile to fit */
+  #poem-revealed .poem-content,
+  #poem-revealed-right .poem-content {
+    font-size: 0.85em !important;
+    padding: 10px !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Smaller headings on mobile */
+  #poem-revealed h4,
+  #poem-revealed-right h4 {
+    font-size: 1em !important;
+    margin-bottom: 8px !important;
+  }
+  
+  #poem-revealed p,
+  #poem-revealed-right p {
+    font-size: 0.85em !important;
+    margin-bottom: 10px !important;
+  }
+  
+  /* Smaller question text on mobile */
+  .phase2-question {
+    font-size: 0.85em !important;
+    margin-bottom: 15px !important;
+  }
+  
+  .phase2-question label {
+    font-size: 0.9em !important;
+    margin-bottom: 8px !important;
+  }
+  
+  .phase2-question .form-check-label {
+    font-size: 0.8em !important;
+  }
+  
+  /* Ensure poem content is readable on mobile */
+  #poem-revealed,
+  #poem-revealed-right {
+    width: 100% !important;
+    margin-bottom: 20px;
+  }
+  
+  #poem-revealed .poem-content,
+  #poem-revealed-right .poem-content {
+    font-size: 0.9em;
+    padding: 12px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  /* Adjust question spacing on mobile */
+  .phase2-question {
+    margin-bottom: 25px;
+    font-size: 0.95em;
+  }
+  
+  .phase2-question label {
+    font-size: 1em;
+    margin-bottom: 12px;
+  }
+  
+  /* Ensure form controls are touch-friendly */
+  .form-check {
+    margin-bottom: 10px;
+  }
+  
+  .form-check-label {
+    font-size: 0.95em;
+    padding-left: 5px;
+  }
+  
+  /* Poem choices - better spacing on mobile */
+  .poem-choice-container {
+    margin-bottom: 15px;
+    padding: 12px;
+  }
+  
+  /* Buttons - better touch targets on mobile */
+  .btn {
+    padding: 12px 20px !important;
+    font-size: 1em !important;
+    min-height: 44px !important; /* iOS recommended touch target size */
+    margin-bottom: 10px !important;
+  }
+  
+  /* Submit button - full width on mobile for emphasis */
+  #submit-btn {
+    width: 100% !important;
+  }
+  
+  /* Reveal button area - better spacing */
+  .d-flex.align-items-center.gap-3 {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 15px !important;
+  }
+  
+  /* Container padding adjustment */
+  .container {
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+  }
+  
+  /* Phase 1 question text - better readability */
+  #phase1-question {
+    margin-bottom: 20px !important;
+    font-size: 1em !important;
+    line-height: 1.5 !important;
+  }
+  
+  /* Headings - better spacing on mobile */
+  #evaluation-box h2 {
+    margin-bottom: 20px !important;
+    font-size: 1.5em !important;
+  }
 }
 
 /* Phase 2 poem revealed section */
