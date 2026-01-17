@@ -7,7 +7,7 @@ from config import CSV_PATH, IMAGE_DIR
 def build_catalog(image_dir: str = IMAGE_DIR):
     """
     Scan image directory and build catalog from filenames.
-    Images are named as: {poem_title}_{type}.png where type is gpt, mj, nano, or seedream.
+    Images are named as: {poem_title}_{type}.jpg or {poem_title}_{type}.png where type is gpt, mj, nano, or seedream.
     
     Returns: { image_path: {"poem_title": str, "image_type": str} }
     """
@@ -18,10 +18,10 @@ def build_catalog(image_dir: str = IMAGE_DIR):
     catalog = {}
     valid_types = {"gpt", "mj", "nano", "seedream"}
     
-    # Scan all PNG files in directory
-    for image_file in image_dir_path.glob("*.jpg"):
+    # Scan all image files (both JPG and PNG) in directory
+    for image_file in list(image_dir_path.glob("*.jpg")) + list(image_dir_path.glob("*.png")):
         filename = image_file.name
-        # Remove .png extension
+        # Remove extension (.jpg or .png - both are 3 characters)
         name_without_ext = filename[:-4]
         
         # Parse filename: {poem_title}_{type}
@@ -46,7 +46,7 @@ def build_catalog(image_dir: str = IMAGE_DIR):
         }
     
     if not catalog:
-        raise RuntimeError(f"No valid images found in {image_dir}. Expected format: {{poem_title}}_{{type}}.png")
+        raise RuntimeError(f"No valid images found in {image_dir}. Expected format: {{poem_title}}_{{type}}.jpg or {{poem_title}}_{{type}}.png")
     
     print(f"Built catalog with {len(catalog)} images from {image_dir}")
     return catalog
