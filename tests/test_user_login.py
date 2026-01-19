@@ -385,8 +385,8 @@ class TestUserLoginLogic(unittest.TestCase):
         self.assertEqual(result.get("user_limit"), self.MAX_PER_USER)
         self.assertIn("是否要继续", result["message"])
     
-    def test_user_above_limit_shows_error(self):
-        """Test: If user has exceeded limit, show error message."""
+    def test_user_at_limit_shows_limit_reached(self):
+        """Test: If user has reached limit, show limit_reached status with extension option."""
         uid = "overlimituser"
         self.store_user_demographics(uid, 25, "male", "bachelor")
         
@@ -412,8 +412,11 @@ class TestUserLoginLogic(unittest.TestCase):
         
         result = self.start_session(uid, user_age=25, user_gender="male", user_education="bachelor")
         
-        self.assertEqual(result["status"], "error")
-        self.assertIn("已达到限制", result["message"])
+        # Should return limit_reached status with extension option, not error
+        self.assertEqual(result["status"], "limit_reached")
+        self.assertIn("是否要继续", result["message"])  # Check for extension prompt
+        self.assertTrue(result.get("can_extend"))
+        self.assertEqual(result.get("remaining"), 0)
     
     def test_limit_extension_increases_by_5(self):
         """Test: When limit is extended, it should increase by 5."""

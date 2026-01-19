@@ -300,9 +300,23 @@ def submit_evaluation(
         }
     
     # Calculate response times
-    phase1_ms = int(phase1_response_ms or 0)
-    phase2_ms = now_ms - int(phase2_start_ms or now_ms)
-    total_ms = now_ms - int(phase1_start_ms or now_ms)
+    try:
+        phase1_start = int(phase1_start_ms or now_ms)
+        phase2_start = int(phase2_start_ms or now_ms)
+        
+        # Phase 1 time: from phase1_start_ms to phase2_start_ms (when reveal was called)
+        phase1_ms = max(0, phase2_start - phase1_start)
+        
+        # Phase 2 time: from phase2_start_ms to now (when submit was called)
+        phase2_ms = max(0, now_ms - phase2_start)
+        
+        # Total time: from phase1_start_ms to now
+        total_ms = max(0, now_ms - phase1_start)
+    except (ValueError, TypeError):
+        # Fallback: use passed value if calculation fails
+        phase1_ms = int(phase1_response_ms or 0)
+        phase2_ms = max(0, now_ms - int(phase2_start_ms or now_ms))
+        total_ms = max(0, now_ms - int(phase1_start_ms or now_ms))
     
     # Get image_type from catalog if not provided
     if not image_type and image_path:
@@ -322,6 +336,7 @@ def submit_evaluation(
         image_path=image_path,
         image_type=image_type or "",
         phase1_choice=phase1_choice,
+        target_letter=target_letter,  # The correct answer for q1-1
         phase1_answers=phase1_answers or {},
         phase1_response_ms=phase1_ms,
         phase2_answers=phase2_answers or {},
