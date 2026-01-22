@@ -32,6 +32,13 @@ def connect_users_db():
         if 'user_limit' not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN user_limit INTEGER")
             conn.commit()
+        # Add seen_titles and seen_paths columns if they don't exist
+        if 'seen_titles' not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN seen_titles TEXT")
+            conn.commit()
+        if 'seen_paths' not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN seen_paths TEXT")
+            conn.commit()
     except:
         pass
     
@@ -373,6 +380,98 @@ def get_all_image_rating_counts() -> dict:
         ).fetchall()
     return {image_path: int(count) for image_path, count in rows}
 
+def load_user_state(user_id: str) -> dict:
+    """
+    Load user state (seen_titles and seen_paths) from database.
+    
+    Returns:
+        dict with 'seen_titles' and 'seen_paths' as sets, or None if user doesn't exist
+    """
+    with WRITE_LOCK:
+        row = USERS_DB.execute(
+            "SELECT seen_titles, seen_paths FROM users WHERE user_id=?",
+            (user_id,)
+        ).fetchone()
+        
+        if row is None:
+            return None
+        
+        seen_titles_json = row[0]
+        seen_paths_json = row[1]
+        
+        # Parse JSON arrays, default to empty sets if NULL or empty
+        seen_titles = set()
+        seen_paths = set()
+        
+        if seen_titles_json:
+            try:
+                seen_titles = set(json.loads(seen_titles_json))
+            except (json.JSONDecodeError, TypeError):
+                seen_titles = set()
+        
+        if seen_paths_json:
+            try:
+                seen_paths = set(json.loads(seen_paths_json))
+            except (json.JSONDecodeError, TypeError):
+                seen_paths = set()
+        
+        return {
+            'seen_titles': seen_titles,
+            'seen_paths': seen_paths
+        }
+
+
+def save_user_state(user_id: str, seen_titles: set, seen_paths: set):
+    """
+    Save user state (seen_titles and seen_paths) to database.
+    
+    Args:
+        user_id: User ID
+        seen_titles: Set of poem titles the user has seen
+        seen_paths: Set of image paths the user has seen
+    """
+    with WRITE_LOCK:
+        # Convert sets to JSON arrays
+        seen_titles_json = json.dumps(list(seen_titles), ensure_ascii=False)
+        seen_paths_json = json.dumps(list(seen_paths), ensure_ascii=False)
+        
+        # Update user state (user must exist - this is called after user is created)
+        USERS_DB.execute(
+            """UPDATE users SET seen_titles = ?, seen_paths = ? WHERE user_id = ?""",
+            (seen_titles_json, seen_paths_json, user_id)
+        )
+        USERS_DB.commit()
+
+
+def save_user_seen_titles(user_id: str, seen_titles: set):
+    """Save only seen_titles to database."""
+    with WRITE_LOCK:
+        seen_titles_json = json.dumps(list(seen_titles), ensure_ascii=False)
+        USERS_DB.execute(
+            """UPDATE users SET seen_titles = ? WHERE user_id = ?""",
+            (seen_titles_json, user_id)
+        )
+        USERS_DB.commit()
+
+
+def save_user_seen_paths(user_id: str, seen_paths: set):
+    """Save only seen_paths to database."""
+    with WRITE_LOCK:
+        seen_paths_json = json.dumps(list(seen_paths), ensure_ascii=False)
+        USERS_DB.execute(
+            """UPDATE users SET seen_paths = ? WHERE user_id = ?""",
+            (seen_paths_json, user_id)
+        )
+        USERS_DB.commit()
+
+
+def get_total_ratings_count() -> int:
+    """Get total number of ratings collected from database."""
+    with WRITE_LOCK:
+        (count,) = EVALUATIONS_DB.execute("SELECT COUNT(*) FROM evaluations").fetchone()
+        return int(count or 0)
+
+
 def get_coverage_metrics(total_images: int) -> dict:
     """Calculate coverage metrics.
     Args:
@@ -380,6 +479,9 @@ def get_coverage_metrics(total_images: int) -> dict:
     Returns:
         {
             "total_images": int,
+            "total_ratings": int,  # Total ratings collected from database
+            "target_ratings": int,  # Target: total_images * 5
+            "ratings_progress": float,  # Percentage: (total_ratings / target_ratings) * 100
             "images_with_5_ratings": int,
             "images_with_at_least_1_rating": int,
             "coverage_5_ratings": float,  # percentage
@@ -389,6 +491,8 @@ def get_coverage_metrics(total_images: int) -> dict:
         }
     """
     rating_counts = get_all_image_rating_counts()
+    total_ratings = get_total_ratings_count()
+    target_ratings = total_images * 5
     
     images_with_5_ratings = sum(1 for count in rating_counts.values() if count >= 5)
     images_with_at_least_1 = len(rating_counts)
@@ -406,6 +510,9 @@ def get_coverage_metrics(total_images: int) -> dict:
     
     return {
         "total_images": total_images,
+        "total_ratings": total_ratings,
+        "target_ratings": target_ratings,
+        "ratings_progress": (total_ratings / target_ratings * 100) if target_ratings > 0 else 0.0,
         "images_with_5_ratings": images_with_5_ratings,
         "images_with_at_least_1_rating": images_with_at_least_1,
         "coverage_5_ratings": (images_with_5_ratings / total_images * 100) if total_images > 0 else 0.0,

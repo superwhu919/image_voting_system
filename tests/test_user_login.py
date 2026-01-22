@@ -75,7 +75,7 @@ class TestUserLoginLogic(unittest.TestCase):
             
             # Create a wrapper for start_session that mocks get_evaluation_item
             # to avoid needing actual image data in tests
-            def mock_get_evaluation_item(session_id):
+            def mock_get_evaluation_item(user_id):
                 """Mock evaluation item for testing - returns immediately."""
                 return (
                     "test_poem",  # poem_title

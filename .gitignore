@@ -16,3 +16,5 @@ all_images/
 *.db-journal
 *.db-wal
 *.db-shm
+
+*ipynb

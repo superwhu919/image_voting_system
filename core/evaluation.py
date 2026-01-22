@@ -1,4 +1,5 @@
 # Core evaluation logic: poem selection and formatting
+import heapq
 import random
 from pathlib import Path
 from data_logic.catalog import CATALOG, POEM_INFO, get_distractors
@@ -29,9 +30,15 @@ def _init_image_selection_system() -> ImageSelectionSystem:
     
     # Sync existing ratings from database
     rating_counts = get_all_image_rating_counts()
-    for image_path, count in rating_counts.items():
-        if image_path in system.ratings:
-            system.ratings[image_path] = count
+    
+    # Clear the initial heap (all entries have rating 0)
+    system.priority_queue = []
+    
+    # Rebuild heap with correct ratings from database
+    for image in system.all_images:
+        count = rating_counts.get(image.path, 0)
+        system.current_ratings[image.path] = count
+        heapq.heappush(system.priority_queue, (count, image))
     
     return system
 
@@ -40,21 +47,22 @@ def _init_image_selection_system() -> ImageSelectionSystem:
 IMAGE_SELECTION_SYSTEM = _init_image_selection_system()
 
 
-def get_evaluation_item(session_id: str):
+def get_evaluation_item(user_id: str):
     """
-    Get an image using the 6-queue priority-based selection system.
+    Get an image using the priority queue-based selection system.
     
     Args:
-        session_id: User ID to use as session identifier
+        user_id: User ID to use as identifier
     
-    Returns: (poem_title, image_path, image_type, distractors_list, poem_options_dict, target_letter)
+    Returns: (poem_title, image_path, image_type, distractors_list, poem_options_dict, target_letter) or None
     poem_options_dict: {"A": poem_title, "B": distractor1, "C": distractor2, "D": distractor3}
+    Returns None if user has seen all images.
     """
     # Check for timeouts before selecting
     IMAGE_SELECTION_SYSTEM.check_timeouts(timeout_minutes=10)
     
     # Get next image from selection system
-    result = IMAGE_SELECTION_SYSTEM.get_next_image(session_id)
+    result = IMAGE_SELECTION_SYSTEM.get_next_image(user_id)
     if result is None:
         raise RuntimeError("No images available for evaluation. All queues exhausted.")
     

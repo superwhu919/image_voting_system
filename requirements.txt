@@ -7,3 +7,5 @@ python-multipart
 selenium
 webdriver-manager
 requests
+psutil
+tqdm

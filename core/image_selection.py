@@ -1,19 +1,18 @@
 """
 Multi-Model Image Evaluation System - Image Selection Logic
 
-Implements a priority queue-based image selection system with 6 queues
-and session-based conflict resolution.
+Implements a priority queue-based image selection system that prioritizes
+images with fewer ratings and prevents race conditions.
 """
 
 import csv
-import random
-import tempfile
+import heapq
 import threading
-from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Tuple, Set, Dict
 from datetime import datetime, timedelta
 from pathlib import Path
+from data_logic.storage import load_user_state, save_user_state, save_user_seen_titles
 
 
 @dataclass
@@ -24,41 +23,40 @@ class ImageRecord:
     
     def __repr__(self):
         return f"ImageRecord(path='{self.path}', title='{self.poem_title}')"
-
-
-class SessionState:
-    """Tracks session state for a single user session."""
     
-    def __init__(self, session_id: str):
-        self.session_id = session_id
+    def __lt__(self, other):
+        """Enable comparison for heapq when priorities are equal."""
+        if not isinstance(other, ImageRecord):
+            return NotImplemented
+        return self.path < other.path
+
+
+class UserState:
+    """Tracks state for a single user."""
+    
+    def __init__(self, user_id: str):
+        self.user_id = user_id
         self.seen_titles: Set[str] = set()
-        self.seen_paths: Set[str] = set()
-        self.pending_images: Dict[str, Tuple[ImageRecord, int, datetime]] = {}  # path -> (record, queue_num, assigned_time)
+        self.pending_images: Dict[str, Tuple[ImageRecord, datetime]] = {}  # path -> (record, assigned_time)
     
     def add_seen(self, image: ImageRecord):
         """Mark an image as seen and rated."""
         self.seen_titles.add(image.poem_title)
-        self.seen_paths.add(image.path)
         # Remove from pending if it was there
         if image.path in self.pending_images:
             del self.pending_images[image.path]
     
-    def mark_checked(self, image: ImageRecord):
-        """Mark an image path as checked (for Scenario B)."""
-        self.seen_paths.add(image.path)
-    
-    def add_pending(self, image: ImageRecord, queue_num: int):
+    def add_pending(self, image: ImageRecord):
         """Add an image to pending list (assigned but not yet rated)."""
-        self.pending_images[image.path] = (image, queue_num, datetime.now())
+        self.pending_images[image.path] = (image, datetime.now())
 
 
 class ImageSelectionSystem:
     """
-    Main image selection system with 6 priority queues.
+    Main image selection system using a priority queue (min-heap).
     
-    Each queue contains all images found in the catalog/CSV, independently shuffled.
-    The number of images is determined dynamically by scanning the input folder.
-    Selection follows priority: Q1 -> Q2 -> ... -> Q6
+    Images are prioritized by rating count (lowest first). The system prevents
+    race conditions by tracking currently assigned images globally.
     """
     
     def __init__(self, csv_path: str = None, catalog: Dict = None):
@@ -69,12 +67,11 @@ class ImageSelectionSystem:
             csv_path: Path to the CSV file containing image records (optional if catalog provided)
             catalog: Dict of {image_path: {"poem_title": str, "image_type": str}} (optional if csv_path provided)
         """
-        self.queues: Dict[int, deque] = {}
-        self.sessions: Dict[str, SessionState] = {}
-        self.ratings: Dict[str, int] = {}  # image_path -> count
+        self.priority_queue = []  # Min-heap: [(rating_count, image_record), ...]
+        self.users: Dict[str, UserState] = {}
+        self.current_ratings: Dict[str, int] = {}  # image_path -> actual current rating count
         self.all_images: list[ImageRecord] = []
         # Thread-safe reentrant lock for all operations on shared state
-        # Using RLock to allow nested lock acquisitions (e.g., check_timeouts -> get_session_state)
         self._lock = threading.RLock()
         
         # Load images from CSV or catalog
@@ -85,13 +82,12 @@ class ImageSelectionSystem:
         else:
             raise ValueError("Either csv_path or catalog must be provided")
         
-        # Initialize 6 queues, each with a shuffled copy of all images
-        for queue_num in range(1, 7):
-            queue = deque(self.all_images.copy())
-            random.shuffle(queue)
-            self.queues[queue_num] = queue
+        # Initialize priority queue with all images (rating 0)
+        for image in self.all_images:
+            heapq.heappush(self.priority_queue, (0, image))
+            self.current_ratings[image.path] = 0
         
-        print(f"Initialized system with {len(self.all_images)} images in 6 queues")
+        print(f"Initialized system with {len(self.all_images)} images in priority queue")
     
     def _load_images_from_catalog(self, catalog: Dict):
         """Load image records from catalog dict."""
@@ -103,14 +99,12 @@ class ImageSelectionSystem:
                     poem_title=poem_title
                 )
                 self.all_images.append(image)
-                self.ratings[image.path] = 0
     
     def _load_images_from_csv(self, csv_path: str):
         """Load image records from CSV file."""
-        with open(csv_path, 'r', encoding='utf-8-sig') as f:  # utf-8-sig handles BOM
+        with open(csv_path, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                # Handle potential BOM in column names
                 path_key = 'absolute_path'
                 if '\ufeffabsolute_path' in row:
                     path_key = '\ufeffabsolute_path'
@@ -120,127 +114,132 @@ class ImageSelectionSystem:
                     poem_title=row['poem_title']
                 )
                 self.all_images.append(image)
-                self.ratings[image.path] = 0
     
     @classmethod
     def from_catalog(cls, catalog: Dict):
         """Create ImageSelectionSystem from catalog dict."""
         return cls(catalog=catalog)
     
-    def get_session_state(self, session_id: str) -> SessionState:
-        """Get or create session state for a session."""
+    def get_user_state(self, user_id: str) -> UserState:
+        """Get or create user state for a user. Loads from database if user exists."""
         with self._lock:
-            if session_id not in self.sessions:
-                self.sessions[session_id] = SessionState(session_id)
-            return self.sessions[session_id]
+            if user_id not in self.users:
+                user_state = UserState(user_id)
+                
+                # Try to load existing state from database
+                db_state = load_user_state(user_id)
+                if db_state:
+                    user_state.seen_titles = db_state['seen_titles']
+                    # Note: seen_paths is ignored in simplified version
+                
+                self.users[user_id] = user_state
+            
+            return self.users[user_id]
     
-    def get_next_image(self, session_id: str) -> Optional[Tuple[ImageRecord, int]]:
+    def get_next_image(self, user_id: str) -> Optional[Tuple[ImageRecord, int]]:
         """
-        Get the next image for a session following the 3-scenario logic.
+        Get the next image for a user from the priority queue.
         
         Returns:
-            Tuple of (ImageRecord, queue_number) if successful, None if all queues exhausted
+            Tuple of (ImageRecord, 0) if successful, None if queue exhausted
         """
         with self._lock:
-            session = self.get_session_state(session_id)
+            user_state = self.get_user_state(user_id)
             
-            # Start with Q1, try each queue in order
-            for queue_num in range(1, 7):
-                queue = self.queues[queue_num]
-                
-                # Skip if queue is empty
-                if len(queue) == 0:
-                    continue
-                
-                # Try to find a valid image in this queue
-                attempts = 0
-                max_attempts = len(queue)  # Prevent infinite loops
-                
-                while attempts < max_attempts:
-                    if len(queue) == 0:
-                        break
-                    
-                    # Pop the top image
-                    image = queue.popleft()
-                    attempts += 1
-                    
-                    # SCENARIO A: SUCCESS (New Content)
-                    if image.poem_title not in session.seen_titles:
-                        # Mark as pending (will be confirmed when rating is submitted)
-                        session.add_pending(image, queue_num)
-                        return (image, queue_num)
-                    
-                    # SCENARIO B: SOFT CONFLICT (Duplicate Title, but new path)
-                    elif image.path not in session.seen_paths:
-                        # Mark path as checked
-                        session.mark_checked(image)
-                        # Recycle to bottom of current queue
-                        queue.append(image)
-                        # Continue to next image in same queue
-                        continue
-                    
-                    # SCENARIO C: HARD CONFLICT (Both title and path seen)
-                    else:
-                        # This means we've cycled through the entire queue
-                        # Skip this queue and move to next
-                        # But first, put the image back (we just popped it)
-                        queue.appendleft(image)
-                        break
-                
-                # If we exhausted this queue, continue to next queue
-                # (The break above will take us to the next queue_num)
+            attempts = 0
+            max_attempts = len(self.priority_queue) * 2  # Prevent infinite loops
+            checked_this_request = set()  # Track images we've already checked
+            images_to_add_back = []  # Track images to add back after loop
             
-            # All queues exhausted or all have conflicts
+            while attempts < max_attempts:
+                if len(self.priority_queue) == 0:
+                    break
+                
+                # Pop from heap (lowest rating first)
+                rating_count, image_record = heapq.heappop(self.priority_queue)
+                attempts += 1
+                
+                # Check if entry is stale (rating was updated since this entry was added)
+                if rating_count != self.current_ratings.get(image_record.path, 0):
+                    continue  # Skip stale entry, don't add back
+                
+                # Check if already checked in this request (prevent infinite loop)
+                if image_record.path in checked_this_request:
+                    continue  # Skip, don't add back
+                
+                # Check if user has seen this poem
+                if image_record.poem_title not in user_state.seen_titles:
+                    # SUCCESS - assign the image
+                    user_state.add_pending(image_record)
+                    
+                    # Add back all checked images before returning
+                    for (rating, img) in images_to_add_back:
+                        heapq.heappush(self.priority_queue, (rating, img))
+                    
+                    return (image_record, 0)  # Return 0 as queue_num for compatibility
+                else:
+                    # CONFLICT - user already saw this poem
+                    checked_this_request.add(image_record.path)
+                    images_to_add_back.append((rating_count, image_record))  # Track for later
+                    continue  # Don't add back yet
+            
+            # Loop exhausted - add back all checked images
+            for (rating, img) in images_to_add_back:
+                heapq.heappush(self.priority_queue, (rating, img))
+            
+            # All images seen or exhausted
             return None
     
-    def submit_rating(self, session_id: str, image_path: str, poem_title: str):
+    def submit_rating(self, user_id: str, image_path: str, poem_title: str):
         """
         Submit a rating for an image.
         
-        This confirms the image was rated and updates session state.
+        This confirms the image was rated and updates user state and priority queue.
         """
         with self._lock:
-            session = self.get_session_state(session_id)
+            user_state = self.get_user_state(user_id)
             
             # Find the image record
             image = ImageRecord(path=image_path, poem_title=poem_title)
             
-            # Update session state
-            session.add_seen(image)
+            # Update user state
+            user_state.add_seen(image)
             
-            # Update global rating count
-            if image_path in self.ratings:
-                self.ratings[image_path] += 1
-            else:
-                self.ratings[image_path] = 1
+            # Persist user state to database (pass empty set for seen_paths for compatibility)
+            save_user_state(user_id, user_state.seen_titles, set())
+            
+            # Update rating count
+            new_rating = self.current_ratings.get(image_path, 0) + 1
+            self.current_ratings[image_path] = new_rating
+            
+            # Add back to heap with new rating (incremented)
+            heapq.heappush(self.priority_queue, (new_rating, image))
     
-    def handle_timeout(self, session_id: str, image_path: str, poem_title: str, original_queue: int):
+    def handle_timeout(self, user_id: str, image_path: str, poem_title: str, original_queue: int):
         """
-        Handle timeout: return image to the head of its original queue.
+        Handle timeout: return image to priority queue.
         
         Args:
-            session_id: Session that timed out
+            user_id: User that timed out
             image_path: Path of the image that timed out
             poem_title: Title of the poem
-            original_queue: Queue number (1-6) where image came from
+            original_queue: Ignored (kept for compatibility)
         """
         with self._lock:
-            session = self.get_session_state(session_id)
+            user_state = self.get_user_state(user_id)
             
             # Remove from pending
-            if image_path in session.pending_images:
-                del session.pending_images[image_path]
+            if image_path in user_state.pending_images:
+                del user_state.pending_images[image_path]
             
-            # Remove from seen_paths if it was there (so it can be served again)
-            session.seen_paths.discard(image_path)
-            
-            # Create image record and return to head of original queue
+            # Add back to heap with current rating (not incremented)
+            current_rating = self.current_ratings.get(image_path, 0)
             image = ImageRecord(path=image_path, poem_title=poem_title)
-            self.queues[original_queue].appendleft(image)
+            heapq.heappush(self.priority_queue, (current_rating, image))
     
     def check_timeouts(self, timeout_minutes: int = 10):
         """
-        Check for pending images that have timed out and return them to queues.
+        Check for pending images that have timed out and return them to queue.
         
         Args:
             timeout_minutes: Minutes before an image is considered timed out
@@ -249,34 +248,30 @@ class ImageSelectionSystem:
             timeout_delta = timedelta(minutes=timeout_minutes)
             now = datetime.now()
             
-            for session in self.sessions.values():
+            for user_state in self.users.values():
                 timed_out = []
-                for image_path, (image, queue_num, assigned_time) in list(session.pending_images.items()):
+                for image_path, (image, assigned_time) in list(user_state.pending_images.items()):
                     if now - assigned_time > timeout_delta:
-                        timed_out.append((image_path, image.poem_title, queue_num))
+                        timed_out.append((image_path, image.poem_title))
                 
-                for image_path, poem_title, queue_num in timed_out:
-                    # Inline timeout handling here since we're already holding the lock
-                    # (could call handle_timeout, but inline is more efficient)
+                for image_path, poem_title in timed_out:
                     # Remove from pending
-                    if image_path in session.pending_images:
-                        del session.pending_images[image_path]
+                    if image_path in user_state.pending_images:
+                        del user_state.pending_images[image_path]
                     
-                    # Remove from seen_paths if it was there (so it can be served again)
-                    session.seen_paths.discard(image_path)
-                    
-                    # Create image record and return to head of original queue
+                    # Add back to heap with current rating (not incremented)
+                    current_rating = self.current_ratings.get(image_path, 0)
                     image = ImageRecord(path=image_path, poem_title=poem_title)
-                    self.queues[queue_num].appendleft(image)
+                    heapq.heappush(self.priority_queue, (current_rating, image))
     
     def get_statistics(self) -> Dict:
         """Get statistics about the system state."""
         with self._lock:
-            total_ratings = sum(self.ratings.values())
-            images_with_5_plus = sum(1 for count in self.ratings.values() if count >= 5)
-            images_with_0_4 = sum(1 for count in self.ratings.values() if 0 <= count < 5)
+            total_ratings = sum(self.current_ratings.values())
+            images_with_5_plus = sum(1 for count in self.current_ratings.values() if count >= 5)
+            images_with_0_4 = sum(1 for count in self.current_ratings.values() if 0 <= count < 5)
             
-            rating_counts = list(self.ratings.values())
+            rating_counts = list(self.current_ratings.values())
             if rating_counts:
                 min_ratings = min(rating_counts)
                 max_ratings = max(rating_counts)
@@ -285,8 +280,6 @@ class ImageSelectionSystem:
                 median_ratings = sorted_counts[len(sorted_counts) // 2]
             else:
                 min_ratings = max_ratings = mean_ratings = median_ratings = 0
-            
-            queue_sizes = {f"Q{i}": len(self.queues[i]) for i in range(1, 7)}
             
             return {
                 'total_images': len(self.all_images),
@@ -297,6 +290,6 @@ class ImageSelectionSystem:
                 'max_ratings_per_image': max_ratings,
                 'mean_ratings_per_image': mean_ratings,
                 'median_ratings_per_image': median_ratings,
-                'queue_sizes': queue_sizes,
-                'active_sessions': len(self.sessions),
+                'queue_size': len(self.priority_queue),
+                'active_users': len(self.users),
             }

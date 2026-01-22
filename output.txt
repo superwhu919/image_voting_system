@@ -1,0 +1,120 @@
+================================================================================
+Real-Time Load Test
+================================================================================
+Server URL: http://127.0.0.1:7860
+Total users: 550
+Frontend ratio: 70.0%
+Backend ratio: 30.0%
+Test duration: 600 seconds
+
+✓ Server is reachable
+
+✓ Server memory monitoring enabled
+Creating user behavior configurations...
+✓ Created 550 user configurations
+  - Limit increasers: 27
+  - Unfinished sessions: 55
+
+Creating user distribution schedule...
+✓ Created schedule for 550 user starts
+
+Preparing 385 frontend browser instances...
+✓ Created 20 browser instances
+
+Starting load test...
+
+
+All 550 user threads started. Waiting for completion...
+
+
+Warning: Timeout reached (1200s). Some threads may still be running.
+
+================================================================================
+Comprehensive Test Report
+================================================================================
+Test Duration: 1208.67 seconds (20.1 minutes)
+Total Users: 550
+Started Users: 550
+Completed Users: 383
+Abandoned Users: 167
+Total Errors: 148
+
+Error Analysis:
+--------------------------------------------------------------------------------
+  frontend_exception: 148
+
+Sample Errors (first 10):
+  [frontend_exception] User realtime_test_user_0101: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0106: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0100: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0105: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0102: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0104: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0110: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0114: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0113: Exception: Message: stale element reference: stale element n
+  [frontend_exception] User realtime_test_user_0112: Exception: Message: stale element reference: stale element n
+
+Race Condition Analysis:
+--------------------------------------------------------------------------------
+Built catalog with 1280 images from /Users/williamhu/Desktop/poem-work/voting_system/all_images
+Initialized system with 1280 images in priority queue
+✓ No concurrent image assignments detected (no race conditions)
+
+Response Time Statistics:
+--------------------------------------------------------------------------------
+  start:
+    Count: 171
+    Avg: 1282.4ms
+    Median: 26.0ms
+    Min: 4.2ms
+    Max: 7775.7ms
+  reveal:
+    Count: 1790
+    Avg: 210.3ms
+    Median: 4.3ms
+    Min: 2.4ms
+    Max: 7858.9ms
+  submit:
+    Count: 1783
+    Avg: 214.6ms
+    Median: 12.9ms
+    Min: 5.5ms
+    Max: 7686.2ms
+
+Limit Increases:
+--------------------------------------------------------------------------------
+Total increases: 33
+Users who increased: 11
+  realtime_test_user_0232: 4 increases
+  realtime_test_user_0281: 4 increases
+  realtime_test_user_0510: 4 increases
+  realtime_test_user_0216: 3 increases
+  realtime_test_user_0222: 3 increases
+  realtime_test_user_0334: 3 increases
+  realtime_test_user_0401: 3 increases
+  realtime_test_user_0376: 3 increases
+  realtime_test_user_0314: 3 increases
+  realtime_test_user_0379: 2 increases
+
+Server Memory Usage:
+--------------------------------------------------------------------------------
+  Samples: 251
+  Avg: 30.2 MB
+  Min: 21.0 MB
+  Max: 83.6 MB
+  Growth: 62.6 MB (298.7%)
+  ⚠️  WARNING: Significant memory growth detected (potential leak)
+
+Concurrent Users:
+--------------------------------------------------------------------------------
+  Max concurrent: 156
+  Avg concurrent: 39.0
+
+Database Integrity Check:
+--------------------------------------------------------------------------------
+✓ Database integrity check passed
+
+================================================================================
+⚠️  HIGH ERROR RATE
+================================================================================

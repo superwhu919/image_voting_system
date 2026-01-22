@@ -1052,25 +1052,23 @@ function updateRemaining(count, userLimit = 10) {
 }
 
 function updateCoverage() {
-    fetch(`${API_BASE}/coverage`)
+    fetch(`${API_BASE}/coverage?t=${Date.now()}`)
         .then(response => response.json())
         .then(data => {
             const coverageDiv = document.getElementById('coverage-metrics');
             if (coverageDiv) {
-                // Display primary queue information
-                const primaryQueue = data.primary_queue || 1;
-                const remainingPercentage = data.primary_queue_remaining_percentage || 0.0;
-                
-                const queueText = `Q${primaryQueue}: ${remainingPercentage.toFixed(1)}%`;
+                // Display ratings progress: only percentage
+                const ratingsProgress = data.ratings_progress || 0.0;
                 
                 coverageDiv.innerHTML = `
                     <div class="coverage-item">
-                        <strong>当前队列:</strong> ${queueText}
+                        <strong>load:</strong> ${ratingsProgress.toFixed(1)}%
                     </div>
                 `;
             }
         })
         .catch(error => {
+            console.error('Coverage update error:', error);
             // Silently handle error
         });
 }

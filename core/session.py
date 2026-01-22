@@ -117,8 +117,30 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
                     "user_limit": user_limit,
                 }
             
-            # Get new evaluation item for resume (use uid as session_id)
-            poem_title, image_path, image_type, distractors, options_dict, target_letter = get_evaluation_item(uid)
+            # Get new evaluation item for resume (use uid as user_id)
+            try:
+                result = get_evaluation_item(uid)
+            except RuntimeError as e:
+                # No more images available - user has seen all images
+                if "No images available" in str(e) or "All queues exhausted" in str(e):
+                    return {
+                        "status": "all_images_seen",
+                        "message": "您已看过所有图片。没有更多图片可供评估。",
+                        "remaining": rem,
+                        "completed": completed,
+                    }
+                # Re-raise if it's a different RuntimeError
+                raise
+            
+            if result is None:
+                return {
+                    "status": "all_images_seen",
+                    "message": "您已看过所有图片。没有更多图片可供评估。",
+                    "remaining": rem,
+                    "completed": completed,
+                }
+            
+            poem_title, image_path, image_type, distractors, options_dict, target_letter = result
             options_data = {}
             for letter in ["A", "B", "C", "D"]:
                 options_data[letter] = format_poem_data(options_dict[letter], letter)
@@ -168,8 +190,30 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
             "user_limit": user_limit,
         }
     
-    # Get new evaluation item (use uid as session_id)
-    poem_title, image_path, image_type, distractors, options_dict, target_letter = get_evaluation_item(uid)
+    # Get new evaluation item (use uid as user_id)
+    try:
+        result = get_evaluation_item(uid)
+    except RuntimeError as e:
+        # No more images available - user has seen all images
+        if "No images available" in str(e) or "All queues exhausted" in str(e):
+            return {
+                "status": "all_images_seen",
+                "message": "您已看过所有图片。没有更多图片可供评估。",
+                "remaining": rem,
+                "completed": completed,
+            }
+        # Re-raise if it's a different RuntimeError
+        raise
+    
+    if result is None:
+        return {
+            "status": "all_images_seen",
+            "message": "您已看过所有图片。没有更多图片可供评估。",
+            "remaining": rem,
+            "completed": completed,
+        }
+    
+    poem_title, image_path, image_type, distractors, options_dict, target_letter = result
     
     # Format poem options data
     options_data = {}
@@ -344,7 +388,7 @@ def submit_evaluation(
         total_response_ms=total_ms,
     )
     
-    # Submit rating to image selection system (use uid as session_id)
+    # Submit rating to image selection system (use uid as user_id)
     IMAGE_SELECTION_SYSTEM.submit_rating(uid, image_path, poem_title)
     
     # Check remaining AFTER writing - if 0, show limit_reached modal instead of next evaluation
@@ -363,8 +407,30 @@ def submit_evaluation(
             "user_limit": user_limit,
         }
     
-    # Get next evaluation item (use uid as session_id)
-    poem_title_next, image_path_next, image_type_next, _, options_dict_next, target_letter_next = get_evaluation_item(uid)
+    # Get next evaluation item (use uid as user_id)
+    try:
+        result = get_evaluation_item(uid)
+    except RuntimeError as e:
+        # No more images available - user has seen all images
+        if "No images available" in str(e) or "All queues exhausted" in str(e):
+            return {
+                "status": "all_images_seen",
+                "message": "您已看过所有图片。没有更多图片可供评估。",
+                "remaining": rem_after,
+                "completed": completed,
+            }
+        # Re-raise if it's a different RuntimeError
+        raise
+    
+    if result is None:
+        return {
+            "status": "all_images_seen",
+            "message": "您已看过所有图片。没有更多图片可供评估。",
+            "remaining": rem_after,
+            "completed": completed,
+        }
+    
+    poem_title_next, image_path_next, image_type_next, _, options_dict_next, target_letter_next = result
     
     # Format poem options data
     options_data_next = {}

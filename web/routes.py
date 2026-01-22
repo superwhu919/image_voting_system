@@ -268,39 +268,13 @@ async def api_debug_questions():
 
 @router.get("/api/coverage")
 async def api_coverage():
-    """Get coverage metrics with queue information."""
+    """Get coverage metrics based on database (persistent across restarts)."""
     try:
         total_images = len(CATALOG)
         metrics = get_coverage_metrics(total_images)
         
-        # Get queue information from ImageSelectionSystem
-        stats = IMAGE_SELECTION_SYSTEM.get_statistics()
-        queue_sizes = stats.get('queue_sizes', {})
-        total_images_in_system = stats.get('total_images', total_images)
-        
-        # Find the earliest (lowest numbered) non-empty queue
-        primary_queue = None
-        primary_queue_size = 0
-        for queue_num in range(1, 7):
-            queue_key = f"Q{queue_num}"
-            queue_size = queue_sizes.get(queue_key, 0)
-            if queue_size > 0:
-                primary_queue = queue_num
-                primary_queue_size = queue_size
-                break
-        
-        # Calculate remaining percentage
-        if primary_queue is not None and total_images_in_system > 0:
-            remaining_percentage = (primary_queue_size / total_images_in_system) * 100
-        else:
-            remaining_percentage = 0.0
-            primary_queue = 1  # Default to Q1 if all queues empty
-        
-        # Add queue information to metrics
-        metrics['primary_queue'] = primary_queue
-        metrics['primary_queue_size'] = primary_queue_size
-        metrics['primary_queue_remaining_percentage'] = remaining_percentage
-        metrics['queue_sizes'] = queue_sizes
+        # All metrics are now database-based and persistent
+        # Removed queue-based metrics as they are in-memory only
         
         return JSONResponse(content=metrics)
     except Exception as e:
