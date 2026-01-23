@@ -18,10 +18,11 @@ let currentSession = {
     target_letter: null,
     phase1_choice: null,
     phase1_start_ms: null,
-    phase1_answers: {},  // Answers to q1-2 and q1-3
+    phase1_answers: {},  // Answers to q1-2
     phase2_start_ms: null,
     phase2_answers: {},
     answer_revealed: false,  // Track if answer has been revealed
+    questions: {},  // Questions from questions.json (q1-1, q1-2, etc.)
 };
 
 // Initialize image modal once on page load
@@ -324,7 +325,7 @@ function handlePhase1Choice(event) {
     currentSession.phase1_choice = choice;
     
     // Questions are already shown, just check if all are answered
-    // (q1-2 and q1-3 are shown immediately when Phase 1 loads)
+    // (q1-2 is shown immediately when Phase 1 loads)
     checkPhase1Complete();
 }
 
@@ -333,15 +334,24 @@ function showPhase1Questions() {
     const phase1QuestionsContent = document.getElementById('phase1-questions-container');
     
     if (!phase1QuestionsContainer || !phase1QuestionsContent) {
+        console.warn('Phase 1 questions container not found');
         return;
     }
     
     // Get questions from current session data
     const questions = currentSession.questions || {};
     const q1_2 = questions['q1-2'];
-    const q1_3 = questions['q1-3'];
     
-    if (!q1_2 || !q1_3) {
+    console.log('showPhase1Questions called:', {
+        has_container: !!phase1QuestionsContainer,
+        has_content: !!phase1QuestionsContent,
+        questions_keys: Object.keys(questions),
+        q1_2_exists: !!q1_2,
+        q1_2_data: q1_2
+    });
+    
+    if (!q1_2) {
+        console.warn('q1-2 not found in questions:', questions);
         return;
     }
     
@@ -352,15 +362,16 @@ function showPhase1Questions() {
         html += renderPhase1Question('q1-2', q1_2);
     }
     
-    // Render q1-3
-    if (q1_3) {
-        html += renderPhase1Question('q1-3', q1_3);
+    if (!html) {
+        console.warn('No HTML generated for q1-2');
+        return;
     }
     
     phase1QuestionsContent.innerHTML = html;
     phase1QuestionsContainer.classList.remove('hidden');
-    // Override !important from .hidden class
+    // Override !important from .hidden class - use both methods to ensure it shows
     phase1QuestionsContainer.style.setProperty('display', 'block', 'important');
+    phase1QuestionsContainer.style.display = 'block';
     
     // Attach event listeners
     document.querySelectorAll('input[name^="q1-"]').forEach(radio => {
@@ -418,14 +429,13 @@ function checkPhase1Complete() {
         return;
     }
     
-    // Check if q1-2 and q1-3 are answered
+    // Check if q1-2 is answered
     const phase1Answers = currentSession.phase1_answers || {};
     const q1_2_answered = phase1Answers['q1-2'];
-    const q1_3_answered = phase1Answers['q1-3'];
     
     const revealBtn = document.getElementById('reveal-btn');
     if (revealBtn) {
-        if (q1_2_answered && q1_3_answered) {
+        if (q1_2_answered) {
             revealBtn.disabled = false;
             revealBtn.classList.remove('disabled');
             revealBtn.classList.remove('btn-secondary');
@@ -447,7 +457,7 @@ function handleReveal() {
     
     // Check if all Phase 1 questions are answered
     const phase1Answers = currentSession.phase1_answers || {};
-    if (!phase1Answers['q1-2'] || !phase1Answers['q1-3']) {
+    if (!phase1Answers['q1-2']) {
         showStatus('请先回答所有问题。', 'error');
         return;
     }
@@ -700,21 +710,23 @@ function updateUIForPhase1(data) {
     }
     
     // Store questions in session if provided
-    if (data.questions) {
-        currentSession.questions = data.questions;
-    } else {
-        // Fallback: construct questions object from individual question fields
-        currentSession.questions = currentSession.questions || {};
-        if (data['q1-1']) {
-            currentSession.questions['q1-1'] = data['q1-1'];
-        }
-        if (data['q1-2']) {
-            currentSession.questions['q1-2'] = data['q1-2'];
-        }
-        if (data['q1-3']) {
-            currentSession.questions['q1-3'] = data['q1-3'];
-        }
+    // Note: Backend sends q1-1 and q1-2 as top-level keys, not in a 'questions' object
+    currentSession.questions = currentSession.questions || {};
+    if (data['q1-1']) {
+        currentSession.questions['q1-1'] = data['q1-1'];
     }
+    if (data['q1-2']) {
+        currentSession.questions['q1-2'] = data['q1-2'];
+    }
+    
+    // Debug: Log to check if q1-2 is being received
+    console.log('Phase 1 data received:', {
+        has_q1_1: !!data['q1-1'],
+        has_q1_2: !!data['q1-2'],
+        q1_2_data: data['q1-2'],
+        session_questions: currentSession.questions,
+        all_data_keys: Object.keys(data)
+    });
     
     // Update Phase 1 question text from questions.json (q1-1)
     const phase1Question = document.getElementById('phase1-question');
@@ -724,7 +736,7 @@ function updateUIForPhase1(data) {
         phase1Question.innerHTML = newText;
     }
     
-    // Show all Phase 1 questions (q1-1, q1-2, q1-3) immediately
+    // Show all Phase 1 questions (q1-1, q1-2) immediately
     showPhase1Questions();
     
     // Update image - use image_url if available, otherwise construct from image_path
@@ -740,7 +752,7 @@ function updateUIForPhase1(data) {
         phase2Box.classList.add('hidden');
     }
     
-    // Phase 1 questions (q1-2, q1-3) will be shown by showPhase1Questions() called in updateUIForPhase1
+    // Phase 1 questions (q1-2) will be shown by showPhase1Questions() called in updateUIForPhase1
     // Don't hide them here - they should be visible from the start
     
     // Reset reveal button

@@ -87,8 +87,7 @@ def simulate_user(user_id: str, num_votes: int = 3):
             # Phase 1: Make a choice (random for testing)
             phase1_choice = target_letter  # Choose correct answer for simplicity
             phase1_answers = {
-                "q1-2": "Somewhat confident",
-                "q1-3": "Holistic_best_match"
+                "q1-2": "Somewhat confident"
             }
             
             # Reveal poem (Phase 2)

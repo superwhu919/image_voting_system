@@ -12,7 +12,7 @@ from config import IMAGE_DIR
 from core import start_session, reveal_poem, update_phase2_answer, submit_evaluation, remaining
 from core.evaluation import IMAGE_SELECTION_SYSTEM
 from data_logic.catalog import CATALOG
-from data_logic.storage import get_coverage_metrics, increase_user_limit
+from data_logic.storage import get_coverage_metrics, increase_user_limit, get_recent_completed_ratings
 
 
 # Request models
@@ -277,6 +277,40 @@ async def api_coverage():
         # Removed queue-based metrics as they are in-memory only
         
         return JSONResponse(content=metrics)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/admin/queue", response_class=HTMLResponse)
+async def admin_queue(request: Request):
+    """Hidden admin page to view current queue state."""
+    try:
+        queue_state = IMAGE_SELECTION_SYSTEM.get_queue_state()
+        stats = IMAGE_SELECTION_SYSTEM.get_statistics()
+        completed_ratings = get_recent_completed_ratings(limit=200)  # Get last 200 completed ratings
+        
+        return templates.TemplateResponse("queue_debug.html", {
+            "request": request,
+            "queue_state": queue_state,
+            "stats": stats,
+            "completed_ratings": completed_ratings
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/admin/queue")
+async def api_admin_queue():
+    """API endpoint to get queue state as JSON."""
+    try:
+        queue_state = IMAGE_SELECTION_SYSTEM.get_queue_state()
+        stats = IMAGE_SELECTION_SYSTEM.get_statistics()
+        completed_ratings = get_recent_completed_ratings(limit=200)
+        return JSONResponse(content={
+            "queue_state": queue_state,
+            "statistics": stats,
+            "completed_ratings": completed_ratings
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -34,11 +34,16 @@ def _init_image_selection_system() -> ImageSelectionSystem:
     # Clear the initial heap (all entries have rating 0)
     system.priority_queue = []
     
+    # Shuffle images before rebuilding heap to randomize order when priorities are equal
+    random.shuffle(system.all_images)
+    
     # Rebuild heap with correct ratings from database
+    # Use (rating_count, random_tie_breaker, image_record) to preserve shuffle order
     for image in system.all_images:
         count = rating_counts.get(image.path, 0)
         system.current_ratings[image.path] = count
-        heapq.heappush(system.priority_queue, (count, image))
+        tie_breaker = random.random()  # Random value to preserve shuffle order
+        heapq.heappush(system.priority_queue, (count, tie_breaker, image))
     
     return system
 

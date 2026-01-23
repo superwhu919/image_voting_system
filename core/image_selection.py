@@ -7,6 +7,7 @@ images with fewer ratings and prevents race conditions.
 
 import csv
 import heapq
+import random
 import threading
 from dataclasses import dataclass
 from typing import Optional, Tuple, Set, Dict
@@ -67,7 +68,7 @@ class ImageSelectionSystem:
             csv_path: Path to the CSV file containing image records (optional if catalog provided)
             catalog: Dict of {image_path: {"poem_title": str, "image_type": str}} (optional if csv_path provided)
         """
-        self.priority_queue = []  # Min-heap: [(rating_count, image_record), ...]
+        self.priority_queue = []  # Min-heap: [(rating_count, tie_breaker, image_record), ...]
         self.users: Dict[str, UserState] = {}
         self.current_ratings: Dict[str, int] = {}  # image_path -> actual current rating count
         self.all_images: list[ImageRecord] = []
@@ -82,9 +83,15 @@ class ImageSelectionSystem:
         else:
             raise ValueError("Either csv_path or catalog must be provided")
         
+        # Shuffle images before adding to heap to randomize order when priorities are equal
+        random.shuffle(self.all_images)
+        
         # Initialize priority queue with all images (rating 0)
+        # Use (rating_count, random_tie_breaker, image_record) to preserve shuffle order
+        # when priorities are equal
         for image in self.all_images:
-            heapq.heappush(self.priority_queue, (0, image))
+            tie_breaker = random.random()  # Random value to preserve shuffle order
+            heapq.heappush(self.priority_queue, (0, tie_breaker, image))
             self.current_ratings[image.path] = 0
         
         print(f"Initialized system with {len(self.all_images)} images in priority queue")
@@ -156,7 +163,8 @@ class ImageSelectionSystem:
                     break
                 
                 # Pop from heap (lowest rating first)
-                rating_count, image_record = heapq.heappop(self.priority_queue)
+                # Heap structure: (rating_count, tie_breaker, image_record)
+                rating_count, tie_breaker, image_record = heapq.heappop(self.priority_queue)
                 attempts += 1
                 
                 # Check if entry is stale (rating was updated since this entry was added)
@@ -173,19 +181,23 @@ class ImageSelectionSystem:
                     user_state.add_pending(image_record)
                     
                     # Add back all checked images before returning
-                    for (rating, img) in images_to_add_back:
-                        heapq.heappush(self.priority_queue, (rating, img))
+                    for (rating, old_tie_breaker, img) in images_to_add_back:
+                        # Generate new tie-breaker to maintain randomness
+                        new_tie_breaker = random.random()
+                        heapq.heappush(self.priority_queue, (rating, new_tie_breaker, img))
                     
                     return (image_record, 0)  # Return 0 as queue_num for compatibility
                 else:
                     # CONFLICT - user already saw this poem
                     checked_this_request.add(image_record.path)
-                    images_to_add_back.append((rating_count, image_record))  # Track for later
+                    images_to_add_back.append((rating_count, tie_breaker, image_record))  # Track for later
                     continue  # Don't add back yet
             
             # Loop exhausted - add back all checked images
-            for (rating, img) in images_to_add_back:
-                heapq.heappush(self.priority_queue, (rating, img))
+            for (rating, old_tie_breaker, img) in images_to_add_back:
+                # Generate new tie-breaker to maintain randomness
+                new_tie_breaker = random.random()
+                heapq.heappush(self.priority_queue, (rating, new_tie_breaker, img))
             
             # All images seen or exhausted
             return None
@@ -213,7 +225,9 @@ class ImageSelectionSystem:
             self.current_ratings[image_path] = new_rating
             
             # Add back to heap with new rating (incremented)
-            heapq.heappush(self.priority_queue, (new_rating, image))
+            # Generate new tie-breaker to maintain randomness
+            tie_breaker = random.random()
+            heapq.heappush(self.priority_queue, (new_rating, tie_breaker, image))
     
     def handle_timeout(self, user_id: str, image_path: str, poem_title: str, original_queue: int):
         """
@@ -235,7 +249,9 @@ class ImageSelectionSystem:
             # Add back to heap with current rating (not incremented)
             current_rating = self.current_ratings.get(image_path, 0)
             image = ImageRecord(path=image_path, poem_title=poem_title)
-            heapq.heappush(self.priority_queue, (current_rating, image))
+            # Generate new tie-breaker to maintain randomness
+            tie_breaker = random.random()
+            heapq.heappush(self.priority_queue, (current_rating, tie_breaker, image))
     
     def check_timeouts(self, timeout_minutes: int = 10):
         """
@@ -262,7 +278,57 @@ class ImageSelectionSystem:
                     # Add back to heap with current rating (not incremented)
                     current_rating = self.current_ratings.get(image_path, 0)
                     image = ImageRecord(path=image_path, poem_title=poem_title)
-                    heapq.heappush(self.priority_queue, (current_rating, image))
+                    # Generate new tie-breaker to maintain randomness
+                    tie_breaker = random.random()
+                    heapq.heappush(self.priority_queue, (current_rating, tie_breaker, image))
+    
+    def get_queue_state(self) -> Dict:
+        """
+        Get a snapshot of the current queue state for debugging.
+        
+        Returns a dictionary with:
+        - queue_items: List of (rating_count, image_path, poem_title) tuples
+        - queue_size: Number of items in queue
+        - rating_distribution: Count of items by rating
+        """
+        with self._lock:
+            # Create a copy of the queue to inspect without modifying it
+            queue_copy = list(self.priority_queue)
+            
+            # Sort by rating for display (heapq maintains heap property, not sorted order)
+            queue_items = []
+            for entry in queue_copy:
+                # Handle both old 2-tuple and new 3-tuple formats for backward compatibility
+                if len(entry) == 3:
+                    rating_count, tie_breaker, image_record = entry
+                else:
+                    rating_count, image_record = entry
+                    tie_breaker = 0  # Default for old format
+                
+                queue_items.append({
+                    'rating_count': rating_count,
+                    'image_path': image_record.path,
+                    'poem_title': image_record.poem_title,
+                    'current_rating': self.current_ratings.get(image_record.path, 0),
+                    'tie_breaker': tie_breaker  # Store tie_breaker to preserve randomized order
+                })
+            
+            # Sort by rating count only (not by path) to preserve randomized order within same rating
+            queue_items.sort(key=lambda x: (x['rating_count'], x['tie_breaker']))
+            
+            # Calculate rating distribution
+            rating_distribution = {}
+            for item in queue_items:
+                rating = item['rating_count']
+                rating_distribution[rating] = rating_distribution.get(rating, 0) + 1
+            
+            return {
+                'queue_items': queue_items,
+                'queue_size': len(self.priority_queue),
+                'rating_distribution': rating_distribution,
+                'total_images': len(self.all_images),
+                'active_users': len(self.users),
+            }
     
     def get_statistics(self) -> Dict:
         """Get statistics about the system state."""

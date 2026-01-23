@@ -269,6 +269,58 @@ def get_random_answer(options: List[Dict]) -> str:
     return random.choice(options).get("value", "")
 
 
+def safe_js_click_by_selector(driver, selector: str, index: int = None):
+    """Click element using CSS selector in JavaScript to avoid stale element issues."""
+    if index is not None:
+        script = f"""
+        var elements = document.querySelectorAll('{selector}');
+        if (elements.length > {index}) {{
+            elements[{index}].scrollIntoView({{behavior: 'instant', block: 'center'}});
+            elements[{index}].click();
+            return true;
+        }}
+        return false;
+        """
+    else:
+        script = f"""
+        var element = document.querySelector('{selector}');
+        if (element) {{
+            element.scrollIntoView({{behavior: 'instant', block: 'center'}});
+            element.click();
+            return true;
+        }}
+        return false;
+        """
+    return driver.execute_script(script)
+
+
+def safe_js_click_random_by_selector(driver, selector: str):
+    """Click a random element from selector in JavaScript."""
+    script = f"""
+    var elements = document.querySelectorAll('{selector}');
+    if (elements.length > 0) {{
+        var randomIndex = Math.floor(Math.random() * elements.length);
+        elements[randomIndex].scrollIntoView({{behavior: 'instant', block: 'center'}});
+        elements[randomIndex].click();
+        return true;
+    }}
+    return false;
+    """
+    return driver.execute_script(script)
+
+
+def safe_js_check_checked(driver, selector: str, index: int):
+    """Check if element is checked using CSS selector."""
+    script = f"""
+    var elements = document.querySelectorAll('{selector}');
+    if (elements.length > {index}) {{
+        return elements[{index}].checked;
+    }}
+    return false;
+    """
+    return driver.execute_script(script)
+
+
 def simulate_backend_user(user_id: str, behavior: UserBehaviorConfig, metrics: MetricsCollector) -> bool:
     """
     Simulate a user via backend API calls.
@@ -332,7 +384,32 @@ def simulate_backend_user(user_id: str, behavior: UserBehaviorConfig, metrics: M
                     metrics.record_error(user_id, "unexpected_limit", "Limit reached but not a limit increaser", "start")
                     return False
             else:
-                metrics.record_error(user_id, "api_error", f"Start returned {data.get('status')}: {data.get('message')}", "start")
+                # #region agent log
+                try:
+                    with open('/Users/williamhu/Desktop/poem-work/voting_system/.cursor/debug.log', 'a') as f:
+                        import json
+                        log_entry = {
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "D",
+                            "location": f"test_realtime_load.py:{335}",
+                            "message": "Start API returned non-success status",
+                            "data": {
+                                "user_id": user_id,
+                                "status": data.get('status'),
+                                "message": str(data.get('message', ''))[:100],
+                                "response_data": str(data)[:200]
+                            },
+                            "timestamp": int(time.time() * 1000)
+                        }
+                        f.write(json.dumps(log_entry) + '\n')
+                except:
+                    pass
+                # #endregion
+                error_msg = f"Start returned {data.get('status')}"
+                if data.get('message'):
+                    error_msg += f": {str(data.get('message'))[:50]}"
+                metrics.record_error(user_id, "api_error", error_msg, "start")
                 return False
         
         # Track image assignment
@@ -369,16 +446,12 @@ def simulate_backend_user(user_id: str, behavior: UserBehaviorConfig, metrics: M
             # Make random Phase 1 choice
             phase1_choice = random.choice(["A", "B", "C", "D"])
             
-            # Answer Phase 1 questions (q1-2, q1-3)
+            # Answer Phase 1 questions (q1-2)
             phase1_answers = {}
             if "q1-2" in data:
                 q1_2_options = data.get("q1-2", {}).get("options", [])
                 if q1_2_options:
                     phase1_answers["q1-2"] = get_random_answer(q1_2_options)
-            if "q1-3" in data:
-                q1_3_options = data.get("q1-3", {}).get("options", [])
-                if q1_3_options:
-                    phase1_answers["q1-3"] = get_random_answer(q1_3_options)
             
             # Check if should abandon after Phase 1
             if behavior.is_unfinished and behavior.abandonment_point == "after_phase1" and vote_count == behavior.abandonment_vote:
@@ -558,8 +631,13 @@ def simulate_frontend_user(user_id: str, behavior: UserBehaviorConfig, metrics: 
         metrics.add_active_session(user_id)
         metrics.record_started(user_id)
         
-        # Navigate to page
-        driver.get(BASE_URL)
+        # Navigate to page - use lock to prevent concurrent navigation on same driver
+        nav_lock = getattr(driver, '_nav_lock', None)
+        if nav_lock:
+            with nav_lock:
+                driver.get(BASE_URL)
+        else:
+            driver.get(BASE_URL)
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.ID, "start-btn"))
         )
@@ -583,12 +661,12 @@ def simulate_frontend_user(user_id: str, behavior: UserBehaviorConfig, metrics: 
         education_dropdown.select_by_value(random.choice(["本科", "硕士", "博士", "高中"]))
         
         # Click start - wait for clickable
-        start_btn = WebDriverWait(driver, 10).until(
+        WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.ID, "start-btn"))
         )
-        driver.execute_script("arguments[0].scrollIntoView(true);", start_btn)
         time.sleep(0.2)
-        start_btn.click()
+        # Use CSS selector in JavaScript to avoid stale element issues
+        safe_js_click_by_selector(driver, "#start-btn")
         
         # Wait for evaluation box
         WebDriverWait(driver, 10).until(
@@ -621,52 +699,41 @@ def simulate_frontend_user(user_id: str, behavior: UserBehaviorConfig, metrics: 
             
             # Select random poem - wait for clickable
             try:
-                radios = WebDriverWait(driver, 10).until(
+                WebDriverWait(driver, 10).until(
                     EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input[name="phase1_choice"]'))
                 )
-                if radios:
-                    # Re-find radios to avoid stale element reference
-                    radios = driver.find_elements(By.CSS_SELECTOR, 'input[name="phase1_choice"]')
-                    if radios:
-                        radio = random.choice(radios)
-                        WebDriverWait(driver, 10).until(EC.element_to_be_clickable(radio))
-                        radio.click()
-                        time.sleep(0.5)
-                    else:
-                        break
-                else:
+                # #region agent log
+                try:
+                    with open('/Users/williamhu/Desktop/poem-work/voting_system/.cursor/debug.log', 'a') as f:
+                        import json
+                        log_entry = {
+                            "sessionId": "debug-session",
+                            "runId": "run1",
+                            "hypothesisId": "B",
+                            "location": f"test_realtime_load.py:{632}",
+                            "message": "Before phase1_choice click",
+                            "data": {"user_id": user_id, "vote_count": vote_count, "operation": "phase1_choice_click"},
+                            "timestamp": int(time.time() * 1000)
+                        }
+                        f.write(json.dumps(log_entry) + '\n')
+                except:
+                    pass
+                # #endregion
+                # Use CSS selector in JavaScript to avoid stale element issues
+                if not safe_js_click_random_by_selector(driver, 'input[name="phase1_choice"]'):
                     break
+                time.sleep(0.5)
             except:
                 break
             
             # Answer Phase 1 questions - wait for clickable
             try:
-                q1_2_radios = WebDriverWait(driver, 5).until(
+                WebDriverWait(driver, 5).until(
                     EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input[name="q1-2"]'))
                 )
-                if q1_2_radios:
-                    # Re-find to avoid stale element reference
-                    q1_2_radios = driver.find_elements(By.CSS_SELECTOR, 'input[name="q1-2"]')
-                    if q1_2_radios:
-                        radio = random.choice(q1_2_radios)
-                        WebDriverWait(driver, 5).until(EC.element_to_be_clickable(radio))
-                        radio.click()
-                        time.sleep(0.3)
-            except:
-                pass
-            
-            try:
-                q1_3_radios = WebDriverWait(driver, 5).until(
-                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, 'input[name="q1-3"]'))
-                )
-                if q1_3_radios:
-                    # Re-find to avoid stale element reference
-                    q1_3_radios = driver.find_elements(By.CSS_SELECTOR, 'input[name="q1-3"]')
-                    if q1_3_radios:
-                        radio = random.choice(q1_3_radios)
-                        WebDriverWait(driver, 5).until(EC.element_to_be_clickable(radio))
-                        radio.click()
-                        time.sleep(0.3)
+                # Use CSS selector in JavaScript to avoid stale element issues
+                safe_js_click_random_by_selector(driver, 'input[name="q1-2"]')
+                time.sleep(0.3)
             except:
                 pass
             
@@ -676,12 +743,13 @@ def simulate_frontend_user(user_id: str, behavior: UserBehaviorConfig, metrics: 
             
             # Click reveal - wait for clickable
             try:
-                reveal_btn = WebDriverWait(driver, 10).until(
+                WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.ID, "reveal-btn"))
                 )
-                driver.execute_script("arguments[0].scrollIntoView(true);", reveal_btn)
                 time.sleep(0.2)
-                reveal_btn.click()
+                # Use CSS selector in JavaScript to avoid stale element issues
+                if not safe_js_click_by_selector(driver, "#reveal-btn"):
+                    break
                 time.sleep(1)
             except:
                 break
@@ -697,25 +765,38 @@ def simulate_frontend_user(user_id: str, behavior: UserBehaviorConfig, metrics: 
                 )
                 answered = 0
                 total_questions = len(phase2_radios)
-                # Re-find radios by index to avoid stale element references
+                # Use CSS selector in JavaScript to avoid stale element references
                 for i in range(total_questions):
                     try:
-                        # Re-find all radios each iteration to avoid stale references
-                        current_radios = driver.find_elements(By.CSS_SELECTOR, 'input[name^="q2-"]')
-                        if i >= len(current_radios):
-                            break
-                        radio = current_radios[i]
-                        if not radio.is_selected():
-                            WebDriverWait(driver, 5).until(EC.element_to_be_clickable(radio))
-                            driver.execute_script("arguments[0].scrollIntoView(true);", radio)
+                        # #region agent log
+                        try:
+                            with open('/Users/williamhu/Desktop/poem-work/voting_system/.cursor/debug.log', 'a') as f:
+                                import json
+                                log_entry = {
+                                    "sessionId": "debug-session",
+                                    "runId": "run1",
+                                    "hypothesisId": "C",
+                                    "location": f"test_realtime_load.py:{708}",
+                                    "message": "Before phase2 radio check/click",
+                                    "data": {"user_id": user_id, "vote_count": vote_count, "question_index": i, "total_questions": total_questions},
+                                    "timestamp": int(time.time() * 1000)
+                                }
+                                f.write(json.dumps(log_entry) + '\n')
+                        except:
+                            pass
+                        # #endregion
+                        # Check if selected using CSS selector in JavaScript to avoid stale element
+                        is_selected = safe_js_check_checked(driver, 'input[name^="q2-"]', i)
+                        if not is_selected:
                             time.sleep(0.1)
-                            radio.click()
-                            answered += 1
-                            time.sleep(random.uniform(0.5, 1.5))
-                            
-                            if behavior.is_unfinished and behavior.abandonment_point == "mid_phase2" and vote_count == behavior.abandonment_vote and answered < total_questions // 2:
-                                metrics.record_abandonment(user_id)
-                                return False
+                            # Use CSS selector in JavaScript to avoid stale element issues
+                            if safe_js_click_by_selector(driver, 'input[name^="q2-"]', i):
+                                answered += 1
+                                time.sleep(random.uniform(0.5, 1.5))
+                                
+                                if behavior.is_unfinished and behavior.abandonment_point == "mid_phase2" and vote_count == behavior.abandonment_vote and answered < total_questions // 2:
+                                    metrics.record_abandonment(user_id)
+                                    return False
                     except Exception as e:
                         # If element is stale or not found, continue to next
                         continue
@@ -724,12 +805,13 @@ def simulate_frontend_user(user_id: str, behavior: UserBehaviorConfig, metrics: 
             
             # Submit - wait for clickable
             try:
-                submit_btn = WebDriverWait(driver, 10).until(
+                WebDriverWait(driver, 10).until(
                     EC.element_to_be_clickable((By.ID, "submit-btn"))
                 )
-                driver.execute_script("arguments[0].scrollIntoView(true);", submit_btn)
                 time.sleep(1)
-                submit_btn.click()
+                # Use CSS selector in JavaScript to avoid stale element issues
+                if not safe_js_click_by_selector(driver, "#submit-btn"):
+                    break
                 time.sleep(2)
             except:
                 break
@@ -739,25 +821,30 @@ def simulate_frontend_user(user_id: str, behavior: UserBehaviorConfig, metrics: 
                 modal = WebDriverWait(driver, 5).until(
                     EC.presence_of_element_located((By.ID, "limit-extension-modal"))
                 )
-                if modal.is_displayed():
+                # Check if modal is displayed using JavaScript
+                is_displayed = driver.execute_script("""
+                    var modal = document.getElementById('limit-extension-modal');
+                    return modal && window.getComputedStyle(modal).display !== 'none';
+                """)
+                if is_displayed:
                     if behavior.is_limit_increaser and behavior.limit_increase_count > 0:
-                        yes_btn = WebDriverWait(driver, 5).until(
+                        WebDriverWait(driver, 5).until(
                             EC.element_to_be_clickable((By.ID, "limit-extension-yes-btn"))
                         )
-                        driver.execute_script("arguments[0].scrollIntoView(true);", yes_btn)
                         time.sleep(0.2)
-                        yes_btn.click()
-                        time.sleep(1)
-                        metrics.record_limit_increase(user_id)
-                        behavior.limit_increase_count -= 1
+                        # Use CSS selector in JavaScript to avoid stale element issues
+                        if safe_js_click_by_selector(driver, "#limit-extension-yes-btn"):
+                            time.sleep(1)
+                            metrics.record_limit_increase(user_id)
+                            behavior.limit_increase_count -= 1
                     else:
-                        no_btn = WebDriverWait(driver, 5).until(
+                        WebDriverWait(driver, 5).until(
                             EC.element_to_be_clickable((By.ID, "limit-extension-no-btn"))
                         )
-                        driver.execute_script("arguments[0].scrollIntoView(true);", no_btn)
                         time.sleep(0.2)
-                        no_btn.click()
-                        break
+                        # Use CSS selector in JavaScript to avoid stale element issues
+                        if safe_js_click_by_selector(driver, "#limit-extension-no-btn"):
+                            break
             except:
                 pass
             
@@ -768,7 +855,49 @@ def simulate_frontend_user(user_id: str, behavior: UserBehaviorConfig, metrics: 
         return True
         
     except Exception as e:
-        metrics.record_error(user_id, "frontend_exception", f"Exception: {str(e)}\n{traceback.format_exc()}")
+        # #region agent log
+        try:
+            with open('/Users/williamhu/Desktop/poem-work/voting_system/.cursor/debug.log', 'a') as f:
+                import json
+                log_entry = {
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "A",
+                    "location": f"test_realtime_load.py:{545}",
+                    "message": "Frontend exception caught",
+                    "data": {
+                        "user_id": user_id,
+                        "vote_count": vote_count if 'vote_count' in locals() else None,
+                        "error_type": type(e).__name__,
+                        "error_msg": str(e)[:200]
+                    },
+                    "timestamp": int(time.time() * 1000)
+                }
+                f.write(json.dumps(log_entry) + '\n')
+        except:
+            pass
+        # #endregion
+        
+        # Print error immediately (thread-safe)
+        error_msg_short = str(e)[:150]  # Truncate for cleaner output
+        error_traceback = traceback.format_exc()
+        with metrics_lock:  # Use existing metrics lock for thread-safe printing
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            print(f"\n[{timestamp}] [FRONTEND_EXCEPTION] User: {user_id}", flush=True)
+            print(f"  Error: {type(e).__name__}: {error_msg_short}", flush=True)
+            # Print first few lines of traceback for debugging
+            traceback_lines = error_traceback.split('\n')
+            if len(traceback_lines) > 10:
+                print(f"  Traceback (first 10 lines):", flush=True)
+                for line in traceback_lines[:10]:
+                    print(f"    {line}", flush=True)
+                print(f"    ... (truncated)", flush=True)
+            else:
+                print(f"  Traceback:", flush=True)
+                for line in traceback_lines:
+                    print(f"    {line}", flush=True)
+        
+        metrics.record_error(user_id, "frontend_exception", f"Exception: {str(e)}\n{error_traceback}")
         metrics.record_abandonment(user_id)
         return False
 
@@ -781,8 +910,9 @@ def create_user_behaviors(total_users: int) -> List[UserBehaviorConfig]:
     num_limit_increasers = int(total_users * 0.05)  # 5%
     num_unfinished = int(total_users * 0.10)  # 10%
     
-    # Create user IDs
-    user_ids = [f"realtime_test_user_{i:04d}" for i in range(total_users)]
+    # Create user IDs with timestamp to avoid conflicts with previous test runs
+    timestamp_suffix = int(time.time() * 1000) % 100000  # Last 5 digits of timestamp
+    user_ids = [f"realtime_test_user_{timestamp_suffix}_{i:04d}" for i in range(total_users)]
     
     # Randomly assign limit increasers
     limit_increaser_ids = set(random.sample(user_ids, num_limit_increasers))
@@ -957,7 +1087,9 @@ def generate_comprehensive_report(metrics: MetricsCollector, elapsed_time: float
         # Show sample errors
         print("Sample Errors (first 10):")
         for error in errors[:10]:
-            print(f"  [{error['error_type']}] User {error['user_id']}: {error['message'][:60]}")
+            # Safely encode message to avoid Unicode issues
+            msg = error['message'][:60].encode('ascii', 'replace').decode('ascii')
+            print(f"  [{error['error_type']}] User {error['user_id']}: {msg}")
         print()
     
     # Race condition detection (check actual system state for concurrent assignments)
@@ -967,7 +1099,7 @@ def generate_comprehensive_report(metrics: MetricsCollector, elapsed_time: float
     if concurrent_assignments:
         print(f"⚠️  RACE CONDITION DETECTED: {len(concurrent_assignments)} images currently assigned to multiple users simultaneously:")
         for image_path, user_list in list(concurrent_assignments.items())[:20]:  # Show first 20
-            print(f"⚠️  DUPLICATE: Image '{image_path}' assigned to {len(user_list)} users:")
+            print(f"[WARNING] DUPLICATE: Image '{image_path}' assigned to {len(user_list)} users:")
             for user_id in user_list[:5]:  # Show first 5 users
                 print(f"     - {user_id}")
             if len(user_list) > 5:
@@ -975,7 +1107,7 @@ def generate_comprehensive_report(metrics: MetricsCollector, elapsed_time: float
         if len(concurrent_assignments) > 20:
             print(f"     ... and {len(concurrent_assignments) - 20} more concurrent assignments")
     else:
-        print("✓ No concurrent image assignments detected (no race conditions)")
+        print("[OK] No concurrent image assignments detected (no race conditions)")
     print()
     
     # Response time statistics
@@ -1026,7 +1158,7 @@ def generate_comprehensive_report(metrics: MetricsCollector, elapsed_time: float
             print(f"  Max: {max_mem:.1f} MB")
             print(f"  Growth: {growth:.1f} MB ({growth_pct:.1f}%)")
             if growth_pct > 50:
-                print("  ⚠️  WARNING: Significant memory growth detected (potential leak)")
+                print("  [WARNING] Significant memory growth detected (potential leak)")
     print()
     
     # Concurrent users
@@ -1044,9 +1176,9 @@ def generate_comprehensive_report(metrics: MetricsCollector, elapsed_time: float
     print("-" * 80)
     integrity = check_database_integrity(total_users, metrics)
     if integrity["passed"]:
-        print("✓ Database integrity check passed")
+        print("[OK] Database integrity check passed")
     else:
-        print("⚠️  Database integrity issues found:")
+        print("[WARNING] Database integrity issues found:")
         for issue in integrity["issues"]:
             print(f"  - {issue}")
     print()
@@ -1056,11 +1188,11 @@ def generate_comprehensive_report(metrics: MetricsCollector, elapsed_time: float
     if concurrent_assignments:
         print("⚠️  RACE CONDITION DETECTED!")
     elif stats['total_errors'] > total_users * 0.01:
-        print("⚠️  HIGH ERROR RATE")
+        print("[WARNING] HIGH ERROR RATE")
     elif memory_samples and (max(mem for _, mem in memory_samples) - min(mem for _, mem in memory_samples)) / min(mem for _, mem in memory_samples) > 0.5:
-        print("⚠️  MEMORY LEAK DETECTED")
+        print("[WARNING] MEMORY LEAK DETECTED")
     else:
-        print("✓ TEST COMPLETED SUCCESSFULLY")
+        print("[OK] TEST COMPLETED SUCCESSFULLY")
     print("=" * 80)
 
 
@@ -1089,7 +1221,7 @@ def run_realtime_load_test(num_users: int = 550, frontend_ratio: float = 0.7,
         print(f"Make sure your server is running: python app.py")
         return False
     
-    print("✓ Server is reachable")
+    print("[OK] Server is reachable")
     print()
     
     # Clear global state
@@ -1114,12 +1246,12 @@ def run_realtime_load_test(num_users: int = 550, frontend_ratio: float = 0.7,
     if enable_memory_monitoring and PSUTIL_AVAILABLE:
         memory_monitor = ServerMemoryMonitor(server_pid=server_pid, port=7860, interval=5.0)
         memory_monitor.start()
-        print("✓ Server memory monitoring enabled")
+        print("[OK] Server memory monitoring enabled")
     
     # Create user behaviors
     print("Creating user behavior configurations...")
     behaviors = create_user_behaviors(num_users)
-    print(f"✓ Created {len(behaviors)} user configurations")
+    print(f"[OK] Created {len(behaviors)} user configurations")
     print(f"  - Limit increasers: {sum(1 for b in behaviors if b.is_limit_increaser)}")
     print(f"  - Unfinished sessions: {sum(1 for b in behaviors if b.is_unfinished)}")
     print()
@@ -1127,7 +1259,7 @@ def run_realtime_load_test(num_users: int = 550, frontend_ratio: float = 0.7,
     # Create user distribution schedule
     print("Creating user distribution schedule...")
     schedule = distribute_users(num_users, duration_seconds)
-    print(f"✓ Created schedule for {len(schedule)} user starts")
+    print(f"[OK] Created schedule for {len(schedule)} user starts")
     print()
     
     # Prepare Selenium drivers for frontend users
@@ -1150,10 +1282,12 @@ def run_realtime_load_test(num_users: int = 550, frontend_ratio: float = 0.7,
                     service=Service(ChromeDriverManager().install()),
                     options=chrome_options
                 )
+                # Add a lock to each driver to prevent concurrent navigation
+                driver._nav_lock = threading.Lock()
                 frontend_drivers.append(driver)
             except Exception as e:
                 print(f"Warning: Could not create browser {i}: {e}")
-        print(f"✓ Created {len(frontend_drivers)} browser instances")
+        print(f"[OK] Created {len(frontend_drivers)} browser instances")
         print()
     
     # Start test

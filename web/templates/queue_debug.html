@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue Debug - Admin</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        .queue-item {
+            background-color: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+        .rating-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+            font-size: 0.85em;
+        }
+        .rating-0 { background-color: #d4edda; color: #155724; }
+        .rating-1 { background-color: #fff3cd; color: #856404; }
+        .rating-2 { background-color: #ffeaa7; color: #856404; }
+        .rating-3 { background-color: #fdcb6e; color: #856404; }
+        .rating-4 { background-color: #e17055; color: white; }
+        .rating-5-plus { background-color: #d63031; color: white; }
+        .stats-card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .refresh-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+        }
+        .path-text {
+            font-family: monospace;
+            font-size: 0.85em;
+            color: #666;
+            word-break: break-all;
+        }
+        .title-text {
+            font-weight: 500;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Queue Debug - Admin Page</h1>
+            <button class="btn btn-primary refresh-btn" onclick="location.reload()">🔄 Refresh</button>
+        </div>
+
+        <!-- Statistics Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Queue Size</h5>
+                    <h2 class="text-primary">{{ queue_state.queue_size }}</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Total Images</h5>
+                    <h2 class="text-info">{{ queue_state.total_images }}</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Active Users</h5>
+                    <h2 class="text-success">{{ queue_state.active_users }}</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Total Ratings</h5>
+                    <h2 class="text-warning">{{ stats.total_ratings }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rating Distribution -->
+        <div class="stats-card mb-4">
+            <h4>Rating Distribution</h4>
+            <div class="row">
+                {% for rating, count in queue_state.rating_distribution.items()|sort %}
+                <div class="col-md-2 mb-2">
+                    <div class="text-center">
+                        <div class="rating-badge rating-{{ rating if rating < 5 else '5-plus' }}">
+                            Rating {{ rating }}: {{ count }}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Additional Statistics -->
+        <div class="stats-card mb-4">
+            <h4>System Statistics</h4>
+            <div class="row">
+                <div class="col-md-3">
+                    <strong>Images with 5+ ratings:</strong> {{ stats.images_with_5_plus_ratings }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Images with 0-4 ratings:</strong> {{ stats.images_with_0_4_ratings }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Min ratings:</strong> {{ stats.min_ratings_per_image }}
+                </div>
+                <div class="col-md-3">
+                    <strong>Max ratings:</strong> {{ stats.max_ratings_per_image }}
+                </div>
+                <div class="col-md-3 mt-2">
+                    <strong>Mean ratings:</strong> {{ "%.2f"|format(stats.mean_ratings_per_image) }}
+                </div>
+                <div class="col-md-3 mt-2">
+                    <strong>Median ratings:</strong> {{ stats.median_ratings_per_image }}
+                </div>
+            </div>
+        </div>
+
+        <!-- Completed Ratings -->
+        <div class="stats-card mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>Recent Completed Ratings ({{ completed_ratings|length }})</h4>
+                <div>
+                    <label>
+                        <input type="checkbox" id="showOnlyRecent" onchange="filterCompleted()"> Show last 50 only
+                    </label>
+                </div>
+            </div>
+            
+            <div id="completedRatings">
+                {% for rating in completed_ratings %}
+                <div class="queue-item completed-rating" data-index="{{ loop.index0 }}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="badge bg-success">Completed</span>
+                                <span class="text-muted small">{{ rating.ts }}</span>
+                            </div>
+                            <div class="title-text mt-1">
+                                <strong>User:</strong> {{ rating.user_id }}
+                            </div>
+                            <div class="title-text mt-1">{{ rating.poem_title }}</div>
+                            <div class="path-text mt-1">{{ rating.image_path }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Queue Items -->
+        <div class="stats-card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4>Queue Items ({{ queue_state.queue_items|length }})</h4>
+                <div>
+                    <label>
+                        <input type="checkbox" id="showOnlyZero" onchange="filterQueue()"> Show only rating 0
+                    </label>
+                </div>
+            </div>
+            
+            <div id="queueItems">
+                {% for item in queue_state.queue_items %}
+                <div class="queue-item" data-rating="{{ item.rating_count }}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div class="flex-grow-1">
+                            <span class="rating-badge rating-{{ item.rating_count if item.rating_count < 5 else '5-plus' }}">
+                                Rating: {{ item.rating_count }}
+                            </span>
+                            {% if item.rating_count != item.current_rating %}
+                            <span class="badge bg-warning text-dark ms-2">
+                                Current: {{ item.current_rating }} (stale entry)
+                            </span>
+                            {% endif %}
+                            <div class="title-text mt-2">{{ item.poem_title }}</div>
+                            <div class="path-text mt-1">{{ item.image_path }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function filterQueue() {
+            const showOnlyZero = document.getElementById('showOnlyZero').checked;
+            const items = document.querySelectorAll('.queue-item:not(.completed-rating)');
+            
+            items.forEach(item => {
+                const rating = parseInt(item.getAttribute('data-rating'));
+                if (showOnlyZero && rating !== 0) {
+                    item.style.display = 'none';
+                } else {
+                    item.style.display = 'block';
+                }
+            });
+        }
+
+        function filterCompleted() {
+            const showOnlyRecent = document.getElementById('showOnlyRecent').checked;
+            const items = document.querySelectorAll('.completed-rating');
+            
+            items.forEach((item, index) => {
+                if (showOnlyRecent && index >= 50) {
+                    item.style.display = 'none';
+                } else {
+                    item.style.display = 'block';
+                }
+            });
+        }
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            location.reload();
+        }, 30000);
+    </script>
+</body>
+</html>

@@ -161,7 +161,6 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
                 "phase2_start_ms": str(now_ms),
                 "q1-1": QUESTIONS.get("q1-1", {}),
                 "q1-2": QUESTIONS.get("q1-2", {}),
-                "q1-3": QUESTIONS.get("q1-3", {}),
             }
         
         # Demographics don't match - ask for different name
@@ -236,7 +235,6 @@ def start_session(uid_input: str, user_age: int = None, user_gender: str = "", u
         "phase2_start_ms": str(now_ms),
         "q1-1": QUESTIONS.get("q1-1", {}),
         "q1-2": QUESTIONS.get("q1-2", {}),
-        "q1-3": QUESTIONS.get("q1-3", {}),
     }
 
 
@@ -369,7 +367,7 @@ def submit_evaluation(
             image_type = image_data.get("image_type", "")
     
     # Write evaluation to database
-    # Note: phase1_answers (q1-2, q1-3) are passed but not yet stored in DB schema
+    # Note: phase1_answers (q1-2) are passed but not yet stored in DB schema
     # This can be added later if needed
     write_evaluation(
         uid=uid,
@@ -453,5 +451,4 @@ def submit_evaluation(
         "phase2_start_ms": str(now_ms),
         "q1-1": QUESTIONS.get("q1-1", {}),
         "q1-2": QUESTIONS.get("q1-2", {}),
-        "q1-3": QUESTIONS.get("q1-3", {}),
     }

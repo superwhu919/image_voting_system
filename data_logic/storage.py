@@ -203,7 +203,7 @@ def write_evaluation(
     image_type,
     phase1_choice,
     target_letter=None,  # The correct answer for q1-1 (A, B, C, or D)
-    phase1_answers=None,  # dict with keys q1-1, q1-2, q1-3
+    phase1_answers=None,  # dict with keys q1-1, q1-2
     phase1_response_ms=0,
     phase2_answers=None,  # dict with keys q2-1, q2-2, ..., q2-N (any number)
     phase2_response_ms=0,
@@ -224,8 +224,7 @@ def write_evaluation(
     phase1_answers should be a dict like:
     {
         "q1-1": "A",  # phase1_choice (optional, will use phase1_choice if not provided)
-        "q1-2": "Very confident",
-        "q1-3": "Holistic_best_match"
+        "q1-2": "Very confident"
     }
     """
     if phase1_answers is None:
@@ -524,3 +523,33 @@ def get_coverage_metrics(total_images: int) -> dict:
             "total": total_images
         }
     }
+
+
+def get_recent_completed_ratings(limit: int = 100) -> list:
+    """
+    Get recent completed ratings with user names and image paths.
+    
+    Args:
+        limit: Maximum number of recent ratings to return
+    
+    Returns:
+        List of dicts with keys: user_id, image_path, poem_title, ts (timestamp)
+    """
+    with WRITE_LOCK:
+        rows = EVALUATIONS_DB.execute(
+            """SELECT user_id, image_path, poem_title, ts 
+               FROM evaluations 
+               ORDER BY ts DESC 
+               LIMIT ?""",
+            (limit,)
+        ).fetchall()
+    
+    return [
+        {
+            "user_id": row[0],
+            "image_path": row[1],
+            "poem_title": row[2],
+            "ts": row[3]
+        }
+        for row in rows
+    ]
