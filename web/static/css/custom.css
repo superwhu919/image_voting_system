@@ -521,37 +521,6 @@
   background-color: #e9ecef;
 }
 
-/* Translation button */
-.poem-translation-btn {
-  background: none;
-  border: 1px solid #007bff;
-  padding: 5px 10px;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 0.9em;
-  color: #007bff;
-  margin-left: auto;
-  white-space: nowrap;
-}
-
-.poem-translation-btn:hover {
-  background-color: #007bff;
-  color: white;
-}
-
-/* Translation text display */
-.poem-translation {
-  margin-left: 30px;
-  margin-top: 10px;
-  padding: 10px 15px;
-  background: #e7f3ff;
-  border-left: 3px solid #007bff;
-  border-radius: 4px;
-  line-height: 1.6;
-  color: #333;
-  font-size: 0.95em;
-}
-
 /* Image modal */
 .img-modal {
   display: none;
