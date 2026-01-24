@@ -106,6 +106,7 @@ def format_poem_data(title: str, letter: str) -> dict:
     info = POEM_INFO.get(title, {})
     author = info.get("author", "")
     content = info.get("content", "")
+    translation = info.get("translation", "")
     
     # Clean up content: strip leading/trailing whitespace from each line
     if content:
@@ -140,6 +141,7 @@ def format_poem_data(title: str, letter: str) -> dict:
         "preview": preview,
         "has_more_content": has_more_content,
         "letter": letter,
+        "translation": translation,
     }
 
 

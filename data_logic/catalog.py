@@ -56,7 +56,7 @@ def load_poem_info(csv_path: str = CSV_PATH):
     Load poem information from CSV file.
     
     Returns:
-      { title: { "author": ..., "content": ..., "similar_titles": [A, B, C] } }
+      { title: { "author": ..., "content": ..., "similar_titles": [A, B, C], "translation": ... } }
     """
     if not Path(csv_path).exists():
         raise FileNotFoundError(f"CSV file not found: {csv_path}")
@@ -68,6 +68,7 @@ def load_poem_info(csv_path: str = CSV_PATH):
         title = str(row.get("Title", "")).strip()
         author = str(row.get("Author", "")).strip()
         content = str(row.get("Content", "")).strip()
+        translation = str(row.get("Translation", "")).strip()
         # Get similar titles from columns A, B, C
         similar_a = str(row.get("A", "")).strip()
         similar_b = str(row.get("B", "")).strip()
@@ -79,6 +80,7 @@ def load_poem_info(csv_path: str = CSV_PATH):
                 "author": author,
                 "content": content,
                 "similar_titles": similar_titles,
+                "translation": translation,
             }
     return poem_info
 

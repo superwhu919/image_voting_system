@@ -912,6 +912,7 @@ function updatePoemChoices(optionsData) {
         const poem = optionsData[letter];
         if (!poem) continue;
         
+        const hasTranslation = poem.translation && poem.translation.trim();
         html += `
             <div class="poem-choice-container">
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
@@ -920,6 +921,12 @@ function updatePoemChoices(optionsData) {
                     <label for="radio_${letter.toLowerCase()}" class="poem-choice-title">
                         ${escapeHtml(poem.title)}
                     </label>
+                    ${hasTranslation ? `
+                        <button type="button" class="poem-translation-btn" 
+                                onclick="toggleTranslation('translation_${letter.toLowerCase()}')">
+                            <span id="toggle_translation_${letter.toLowerCase()}">查看翻译</span>
+                        </button>
+                    ` : ''}
                 </div>
                 <div class="poem-choice-author">${escapeHtml(poem.author)}</div>
                 ${poem.has_more_content ? `
@@ -932,6 +939,9 @@ function updatePoemChoices(optionsData) {
                 ` : `
                     <div class="poem-choice-full">${escapeHtml(poem.content.trim().replace(/^\s+/gm, ''))}</div>
                 `}
+                ${hasTranslation ? `
+                    <div id="translation_${letter.toLowerCase()}" class="poem-translation hidden">${escapeHtml(poem.translation.trim())}</div>
+                ` : ''}
             </div>
         `;
     }
@@ -1039,6 +1049,21 @@ function togglePoem(id) {
         } else {
             elem.classList.add('hidden');
             toggle.textContent = '展开完整内容';
+        }
+    }
+}
+
+function toggleTranslation(id) {
+    const elem = document.getElementById(id);
+    const toggleId = 'toggle_' + id;
+    const toggle = document.getElementById(toggleId);
+    if (elem && toggle) {
+        if (elem.classList.contains('hidden')) {
+            elem.classList.remove('hidden');
+            toggle.textContent = '隐藏翻译';
+        } else {
+            elem.classList.add('hidden');
+            toggle.textContent = '查看翻译';
         }
     }
 }
