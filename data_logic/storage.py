@@ -111,6 +111,14 @@ def user_count(uid: str) -> int:
         (n,) = EVALUATIONS_DB.execute("SELECT COUNT(*) FROM evaluations WHERE user_id=?", (uid,)).fetchone()
     return int(n or 0)
 
+
+def get_total_users_count() -> int:
+    """Get total number of users in the system (from users table)."""
+    with WRITE_LOCK:
+        (count,) = USERS_DB.execute("SELECT COUNT(*) FROM users").fetchone()
+    return int(count or 0)
+
+
 def get_user_demographics(uid: str) -> dict:
     """Get user demographics (age, gender, education) from users table, or from first evaluation record."""
     with WRITE_LOCK:

@@ -13,7 +13,14 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, Set, Dict
 from datetime import datetime, timedelta
 from pathlib import Path
-from data_logic.storage import load_user_state, save_user_state, save_user_seen_titles
+from data_logic.storage import (
+    load_user_state,
+    save_user_state,
+    save_user_seen_titles,
+    get_total_ratings_count,
+    get_total_users_count,
+    get_all_image_rating_counts,
+)
 
 
 @dataclass
@@ -327,26 +334,28 @@ class ImageSelectionSystem:
                 'queue_size': len(self.priority_queue),
                 'rating_distribution': rating_distribution,
                 'total_images': len(self.all_images),
-                'active_users': len(self.users),
+                'active_users': get_total_users_count(),
             }
     
     def get_statistics(self) -> Dict:
-        """Get statistics about the system state."""
+        """Get statistics about the system state (from DB for accuracy after restart)."""
         with self._lock:
-            total_ratings = sum(self.current_ratings.values())
-            images_with_5_plus = sum(1 for count in self.current_ratings.values() if count >= 5)
-            images_with_0_4 = sum(1 for count in self.current_ratings.values() if 0 <= count < 5)
-            
-            rating_counts = list(self.current_ratings.values())
-            if rating_counts:
-                min_ratings = min(rating_counts)
-                max_ratings = max(rating_counts)
-                mean_ratings = sum(rating_counts) / len(rating_counts)
-                sorted_counts = sorted(rating_counts)
+            total_ratings = get_total_ratings_count()
+            active_users = get_total_users_count()
+            # Compute per-image stats from DB (catalog images only) so they're correct after restart
+            db_rating_counts = get_all_image_rating_counts()
+            counts = [db_rating_counts.get(img.path, 0) for img in self.all_images]
+            if counts:
+                images_with_5_plus = sum(1 for c in counts if c >= 5)
+                images_with_0_4 = sum(1 for c in counts if 0 <= c < 5)
+                min_ratings = min(counts)
+                max_ratings = max(counts)
+                mean_ratings = sum(counts) / len(counts)
+                sorted_counts = sorted(counts)
                 median_ratings = sorted_counts[len(sorted_counts) // 2]
             else:
-                min_ratings = max_ratings = mean_ratings = median_ratings = 0
-            
+                images_with_5_plus = images_with_0_4 = min_ratings = max_ratings = mean_ratings = median_ratings = 0
+
             return {
                 'total_images': len(self.all_images),
                 'total_ratings': total_ratings,
@@ -357,5 +366,5 @@ class ImageSelectionSystem:
                 'mean_ratings_per_image': mean_ratings,
                 'median_ratings_per_image': median_ratings,
                 'queue_size': len(self.priority_queue),
-                'active_users': len(self.users),
+                'active_users': active_users,
             }
