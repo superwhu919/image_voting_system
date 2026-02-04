@@ -98,6 +98,15 @@ def connect_evaluations_db():
         total_response_ms INTEGER
         )""")
         conn.commit()
+
+    # Unique constraint: one evaluation per (user_id, image_path) - prevents duplicate rows from double-submit
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_evaluations_user_image ON evaluations(user_id, image_path)"
+        )
+        conn.commit()
+    except (sqlite3.OperationalError, sqlite3.IntegrityError):
+        pass  # index may fail if table already has duplicate rows or index exists
     
     return conn
 
@@ -255,6 +264,14 @@ def write_evaluation(
     
     ts = datetime.utcnow().isoformat()
     with WRITE_LOCK:
+        # Idempotent submit: one evaluation per (user_id, image_path)
+        existing = EVALUATIONS_DB.execute(
+            "SELECT 1 FROM evaluations WHERE user_id = ? AND image_path = ? LIMIT 1",
+            (uid, image_path),
+        ).fetchone()
+        if existing:
+            return (None, False)
+
         # Check if old columns exist for backward compatibility
         cursor = EVALUATIONS_DB.execute("PRAGMA table_info(evaluations)")
         columns = [row[1] for row in cursor.fetchall()]
@@ -417,15 +434,19 @@ def load_user_state(user_id: str) -> dict:
                 seen_titles = set()
         
         if seen_paths_json:
+        # seen_paths: raw list (Option A uses it for pending: list of {"p": path, "at": iso} or legacy list of strings)
+        seen_paths_raw = []
+        if seen_paths_json:
             try:
-                seen_paths = set(json.loads(seen_paths_json))
+                parsed = json.loads(seen_paths_json)
+                if isinstance(parsed, list):
+                    seen_paths_raw = parsed
             except (json.JSONDecodeError, TypeError):
-                seen_paths = set()
+                pass
         
         return {
             'seen_titles': seen_titles,
-            'seen_paths': seen_paths
-        }
+            'seen_paths': seen_paths_raw
 
 
 def save_user_state(user_id: str, seen_titles: set, seen_paths: set):
@@ -463,12 +484,27 @@ def save_user_seen_titles(user_id: str, seen_titles: set):
 
 def save_user_seen_paths(user_id: str, seen_paths: set):
     """Save only seen_paths to database."""
+    """Save only seen_paths to database (set of paths, serialized as JSON array of strings)."""
     with WRITE_LOCK:
         seen_paths_json = json.dumps(list(seen_paths), ensure_ascii=False)
         USERS_DB.execute(
             """UPDATE users SET seen_paths = ? WHERE user_id = ?""",
             (seen_paths_json, user_id)
         )
+        USERS_DB.commit()
+
+
+def save_user_pending(user_id: str, pending_list: list):
+    """
+    Save pending assignments to database (Option A).
+    pending_list: list of {"p": path, "at": iso_datetime_str} for each assigned-but-not-submitted image.
+    Stored in users.seen_paths so other workers/restarts see it.
+    """
+    with WRITE_LOCK:
+        pending_json = json.dumps(pending_list, ensure_ascii=False)
+        USERS_DB.execute(
+            """UPDATE users SET seen_paths = ? WHERE user_id = ?""",
+            (pending_json, user_id)
         USERS_DB.commit()
 
 

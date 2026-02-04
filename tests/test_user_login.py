@@ -357,7 +357,7 @@ class TestUserLoginLogic(unittest.TestCase):
         uid = "limituser"
         self.store_user_demographics(uid, 25, "male", "bachelor")
         
-        # Simulate 10 completed evaluations
+        # Simulate 10 completed evaluations (unique image_path per eval for idempotent write_evaluation)
         for i in range(10):
             self.write_evaluation(
                 uid=uid,
@@ -365,7 +365,7 @@ class TestUserLoginLogic(unittest.TestCase):
                 user_gender="male",
                 user_education="bachelor",
                 poem_title="test_poem",
-                image_path="test_image.png",
+                image_path=f"test_image_{i}.png",
                 image_type="test",
                 phase1_choice="A",
                 phase1_response_ms=1000,
@@ -399,7 +399,7 @@ class TestUserLoginLogic(unittest.TestCase):
                 user_gender="male",
                 user_education="bachelor",
                 poem_title="test_poem",
-                image_path="test_image.png",
+                image_path=f"test_image_{i}.png",
                 image_type="test",
                 phase1_choice="A",
                 phase1_response_ms=1000,
@@ -423,7 +423,7 @@ class TestUserLoginLogic(unittest.TestCase):
         uid = "extenduser"
         self.store_user_demographics(uid, 25, "male", "bachelor")
         
-        # Complete 10 evaluations
+        # Complete 10 evaluations (unique image_path per eval)
         for i in range(10):
             self.write_evaluation(
                 uid=uid,
@@ -431,7 +431,7 @@ class TestUserLoginLogic(unittest.TestCase):
                 user_gender="male",
                 user_education="bachelor",
                 poem_title="test_poem",
-                image_path="test_image.png",
+                image_path=f"test_image_{i}.png",
                 image_type="test",
                 phase1_choice="A",
                 phase1_response_ms=1000,
@@ -456,7 +456,7 @@ class TestUserLoginLogic(unittest.TestCase):
         uid = "continueuser"
         self.store_user_demographics(uid, 25, "male", "bachelor")
         
-        # Complete 10 evaluations
+        # Complete 10 evaluations (unique image_path per eval)
         for i in range(10):
             self.write_evaluation(
                 uid=uid,
@@ -464,7 +464,7 @@ class TestUserLoginLogic(unittest.TestCase):
                 user_gender="male",
                 user_education="bachelor",
                 poem_title="test_poem",
-                image_path="test_image.png",
+                image_path=f"test_image_{i}.png",
                 image_type="test",
                 phase1_choice="A",
                 phase1_response_ms=1000,
@@ -510,7 +510,7 @@ class TestUserLoginLogic(unittest.TestCase):
         uid = "resumeuser"
         self.store_user_demographics(uid, 25, "male", "bachelor")
         
-        # Complete 3 evaluations
+        # Complete 3 evaluations (unique image_path per eval)
         for i in range(3):
             self.write_evaluation(
                 uid=uid,
@@ -518,7 +518,7 @@ class TestUserLoginLogic(unittest.TestCase):
                 user_gender="male",
                 user_education="bachelor",
                 poem_title="test_poem",
-                image_path="test_image.png",
+                image_path=f"test_image_{i}.png",
                 image_type="test",
                 phase1_choice="A",
                 phase1_response_ms=1000,

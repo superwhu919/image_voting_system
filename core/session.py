@@ -366,10 +366,9 @@ def submit_evaluation(
         if image_data:
             image_type = image_data.get("image_type", "")
     
-    # Write evaluation to database
+    # Write evaluation to database (idempotent: duplicate user+image returns inserted=False)
     # Note: phase1_answers (q1-2) are passed but not yet stored in DB schema
-    # This can be added later if needed
-    write_evaluation(
+    ts, inserted = write_evaluation(
         uid=uid,
         user_age=user_age,
         user_gender=user_gender or "",
@@ -385,9 +384,10 @@ def submit_evaluation(
         phase2_response_ms=phase2_ms,
         total_response_ms=total_ms,
     )
-    
-    # Submit rating to image selection system (use uid as user_id)
-    IMAGE_SELECTION_SYSTEM.submit_rating(uid, image_path, poem_title)
+
+    # Only update selection state when we actually inserted (avoid double-count on duplicate submit)
+    if inserted:
+        IMAGE_SELECTION_SYSTEM.submit_rating(uid, image_path, poem_title)
     
     # Check remaining AFTER writing - if 0, show limit_reached modal instead of next evaluation
     rem_after = remaining(uid)

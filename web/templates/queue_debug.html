@@ -65,25 +65,33 @@
 
         <!-- Statistics Cards -->
         <div class="row mb-4">
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <div class="stats-card">
                     <h5>Queue Size</h5>
                     <h2 class="text-primary">{{ queue_state.queue_size }}</h2>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <div class="stats-card">
                     <h5>Total Images</h5>
                     <h2 class="text-info">{{ queue_state.total_images }}</h2>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
                 <div class="stats-card">
                     <h5>Total Users</h5>
                     <h2 class="text-success">{{ queue_state.active_users }}</h2>
+                    <small class="text-muted">registered</small>
                 </div>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
+                <div class="stats-card">
+                    <h5>Current Users</h5>
+                    <h2 class="text-secondary">{{ queue_state.get('concurrent_users', 0) }}</h2>
+                    <small class="text-muted">concurrent (with pending)</small>
+                </div>
+            </div>
+            <div class="col-md-2">
                 <div class="stats-card">
                     <h5>Total Ratings</h5>
                     <h2 class="text-warning">{{ stats.total_ratings }}</h2>

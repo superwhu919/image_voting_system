@@ -16,7 +16,7 @@ from pathlib import Path
 from data_logic.storage import (
     load_user_state,
     save_user_state,
-    save_user_seen_titles,
+    save_user_pending,
     get_total_ratings_count,
     get_total_users_count,
     get_all_image_rating_counts,
@@ -134,6 +134,31 @@ class ImageSelectionSystem:
         """Create ImageSelectionSystem from catalog dict."""
         return cls(catalog=catalog)
     
+    def _pending_to_list(self, user_state: UserState) -> list:
+        """Serialize pending_images to list of {p: path, at: iso} for DB (Option A)."""
+        return [
+            {"p": path, "at": assigned_at.isoformat()}
+            for path, (_, assigned_at) in user_state.pending_images.items()
+        ]
+
+    def _restore_pending_from_db(self, user_state: UserState, seen_paths_raw: list) -> None:
+        """Restore pending_images from DB format (list of dicts or legacy list of strings)."""
+        path_to_record = {img.path: img for img in self.all_images}
+        for item in seen_paths_raw or []:
+            path = None
+            assigned_at = datetime.now()
+            if isinstance(item, dict) and "p" in item:
+                path = item["p"]
+                if "at" in item:
+                    try:
+                        assigned_at = datetime.fromisoformat(item["at"].replace("Z", ""))
+                    except (ValueError, TypeError):
+                        pass
+            elif isinstance(item, str):
+                path = item
+            if path and path in path_to_record:
+                user_state.pending_images[path] = (path_to_record[path], assigned_at)
+
     def get_user_state(self, user_id: str) -> UserState:
         """Get or create user state for a user. Loads from database if user exists."""
         with self._lock:
@@ -144,7 +169,8 @@ class ImageSelectionSystem:
                 db_state = load_user_state(user_id)
                 if db_state:
                     user_state.seen_titles = db_state['seen_titles']
-                    # Note: seen_paths is ignored in simplified version
+                    # Option A: seen_paths = pending (list of {"p", "at"} or legacy strings)
+                    self._restore_pending_from_db(user_state, db_state.get('seen_paths', []))
                 
                 self.users[user_id] = user_state
             
@@ -182,10 +208,21 @@ class ImageSelectionSystem:
                 if image_record.path in checked_this_request:
                     continue  # Skip, don't add back
                 
+                # Option A: skip if this path is already pending for this user (e.g. from DB after restart)
+                if image_record.path in user_state.pending_images:
+                    continue  # Skip, don't add back
+                
                 # Check if user has seen this poem
                 if image_record.poem_title not in user_state.seen_titles:
                     # SUCCESS - assign the image
                     user_state.add_pending(image_record)
+                    # Option A: persist pending so other workers/requests see it
+                    try:
+                        save_user_pending(user_id, self._pending_to_list(user_state))
+                    except Exception:
+                        if image_record.path in user_state.pending_images:
+                            del user_state.pending_images[image_record.path]
+                        raise
                     
                     # Add back all checked images before returning
                     for (rating, old_tie_breaker, img) in images_to_add_back:
@@ -224,8 +261,9 @@ class ImageSelectionSystem:
             # Update user state
             user_state.add_seen(image)
             
-            # Persist user state to database (pass empty set for seen_paths for compatibility)
+            # Persist: seen_titles (completed) and pending (Option A: current pending_images)
             save_user_state(user_id, user_state.seen_titles, set())
+            save_user_pending(user_id, self._pending_to_list(user_state))
             
             # Update rating count
             new_rating = self.current_ratings.get(image_path, 0) + 1
@@ -252,6 +290,7 @@ class ImageSelectionSystem:
             # Remove from pending
             if image_path in user_state.pending_images:
                 del user_state.pending_images[image_path]
+            save_user_pending(user_id, self._pending_to_list(user_state))
             
             # Add back to heap with current rating (not incremented)
             current_rating = self.current_ratings.get(image_path, 0)
@@ -288,6 +327,9 @@ class ImageSelectionSystem:
                     # Generate new tie-breaker to maintain randomness
                     tie_breaker = random.random()
                     heapq.heappush(self.priority_queue, (current_rating, tie_breaker, image))
+                
+                if timed_out:
+                    save_user_pending(user_state.user_id, self._pending_to_list(user_state))
     
     def get_queue_state(self) -> Dict:
         """
@@ -328,6 +370,9 @@ class ImageSelectionSystem:
             for item in queue_items:
                 rating = item['rating_count']
                 rating_distribution[rating] = rating_distribution.get(rating, 0) + 1
+
+            # Concurrent users = users with at least one pending image (assigned but not yet submitted)
+            concurrent_users = sum(1 for u in self.users.values() if u.pending_images)
             
             return {
                 'queue_items': queue_items,
@@ -335,6 +380,7 @@ class ImageSelectionSystem:
                 'rating_distribution': rating_distribution,
                 'total_images': len(self.all_images),
                 'active_users': get_total_users_count(),
+                'concurrent_users': concurrent_users,
             }
     
     def get_statistics(self) -> Dict:
