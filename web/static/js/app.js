@@ -163,6 +163,13 @@ function handleStart(userInfoOverride = null) {
         return;
     }
     
+    // Grey out start button immediately to prevent double-submit
+    const startBtn = document.getElementById('start-btn');
+    if (startBtn) {
+        startBtn.disabled = true;
+        startBtn.classList.add('start-clicked');
+    }
+    
     // Debug logging
     const requestData = { 
         user_id: userId,
@@ -194,10 +201,10 @@ function handleStart(userInfoOverride = null) {
             if (userGenderInput) userGenderInput.disabled = true;
             if (userEducationInput) userEducationInput.disabled = true;
             
-            // Disable start button
-            const startBtn = document.getElementById('start-btn');
+            // Keep start button disabled (already greyed by start-clicked)
             if (startBtn) {
                 startBtn.disabled = true;
+                startBtn.classList.add('start-clicked');
             }
             
             currentSession = {
@@ -239,7 +246,17 @@ function handleStart(userInfoOverride = null) {
             if (!storedUserInfo.userId || !storedUserInfo.userAge || !storedUserInfo.userGender || !storedUserInfo.userEducation) {
                 console.error('Missing user info:', storedUserInfo);
                 showStatus('错误：用户信息不完整。请重新填写并重试。', 'error');
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.classList.remove('start-clicked');
+                }
                 return;
+            }
+            
+            // Re-enable start button so user can click 是 and retry
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.classList.remove('start-clicked');
             }
             
             showLimitExtensionModal(
@@ -291,13 +308,20 @@ function handleStart(userInfoOverride = null) {
         } else if (data.name_taken) {
             // Name is taken - allow user to change it
             showStatus(data.message, 'error');
-            // Keep all fields enabled so user can change name and try again
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.classList.remove('start-clicked');
+            }
             if (userInput) {
                 userInput.focus();
                 userInput.select();
             }
         } else {
             showStatus(data.message, 'error');
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.classList.remove('start-clicked');
+            }
             if (data.remaining !== undefined) {
                 updateRemaining(data.remaining, data.user_limit || 10);
             }
@@ -305,6 +329,10 @@ function handleStart(userInfoOverride = null) {
     })
     .catch(error => {
         showStatus('发生错误，请重试。', 'error');
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.classList.remove('start-clicked');
+        }
     });
 }
 
@@ -462,6 +490,13 @@ function handleReveal() {
         return;
     }
     
+    // Grey out reveal button immediately to prevent double-submit
+    const revealBtn = document.getElementById('reveal-btn');
+    if (revealBtn) {
+        revealBtn.disabled = true;
+        revealBtn.classList.add('reveal-clicked');
+    }
+    
     fetch(`${API_BASE}/reveal`, {
         method: 'POST',
         headers: {
@@ -493,11 +528,11 @@ function handleReveal() {
                 revealAnswer.classList.remove('hidden');
             }
             
-            // Disable reveal button after revealing
-            const revealBtn = document.getElementById('reveal-btn');
+            // Keep reveal button disabled (already greyed by reveal-clicked)
             if (revealBtn) {
                 revealBtn.disabled = true;
                 revealBtn.classList.add('disabled');
+                revealBtn.classList.add('reveal-clicked');
             }
             
             // Mark answer as revealed and disable all phase 1 radio buttons
@@ -525,10 +560,18 @@ function handleReveal() {
             // Don't show status message at top, answer is shown next to button
         } else {
             showStatus(data.message, 'error');
+            if (revealBtn) {
+                revealBtn.disabled = false;
+                revealBtn.classList.remove('reveal-clicked');
+            }
         }
     })
     .catch(error => {
         showStatus('发生错误，请重试。', 'error');
+        if (revealBtn) {
+            revealBtn.disabled = false;
+            revealBtn.classList.remove('reveal-clicked');
+        }
     });
 }
 
@@ -579,6 +622,13 @@ function handleSubmit() {
     if (!allAnswered) {
         showStatus('请完成所有第二阶段问题。', 'error');
         return;
+    }
+    
+    // Grey out submit button immediately to prevent double-submit
+    const submitBtn = document.getElementById('submit-btn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('submit-clicked');
     }
     
     fetch(`${API_BASE}/submit`, {
@@ -692,6 +742,10 @@ function handleSubmit() {
             );
         } else {
             showStatus(data.message, 'error');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('submit-clicked');
+            }
             if (data.remaining !== undefined) {
                 updateRemaining(data.remaining, data.user_limit || 10);
             }
@@ -699,6 +753,10 @@ function handleSubmit() {
     })
     .catch(error => {
         showStatus('发生错误，请重试。', 'error');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('submit-clicked');
+        }
     });
 }
 
@@ -755,13 +813,14 @@ function updateUIForPhase1(data) {
     // Phase 1 questions (q1-2) will be shown by showPhase1Questions() called in updateUIForPhase1
     // Don't hide them here - they should be visible from the start
     
-    // Reset reveal button
+    // Reset reveal button for next evaluation
     const revealBtn = document.getElementById('reveal-btn');
     if (revealBtn) {
         revealBtn.disabled = true;
         revealBtn.classList.add('disabled');
         revealBtn.classList.remove('btn-primary');
         revealBtn.classList.add('btn-secondary');
+        revealBtn.classList.remove('reveal-clicked');
     }
     
     // Hide reveal answer
@@ -860,11 +919,12 @@ function updateUIForPhase2(data) {
     // Render questions if not already rendered
     renderQuestions(data.questions);
     
-    // Reset submit button
+    // Reset submit button for next evaluation
     const submitBtn = document.getElementById('submit-btn');
     if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.classList.add('disabled');
+        submitBtn.classList.remove('submit-clicked');
     }
     
     // Reset phase 2 answers

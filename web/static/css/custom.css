@@ -5,6 +5,15 @@
   border-radius: 6px; 
 }
 
+/* Buttons greyed out after click (prevent double-submit) */
+#submit-btn.submit-clicked,
+#reveal-btn.reveal-clicked,
+#start-btn.start-clicked {
+  opacity: 0.6;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 /* Image display */
 .eval-image {
   width: 500px;
