@@ -255,6 +255,14 @@ def write_evaluation(
     
     ts = datetime.utcnow().isoformat()
     with WRITE_LOCK:
+        # Idempotent submit: one evaluation per (user_id, image_path)
+        existing = EVALUATIONS_DB.execute(
+            "SELECT 1 FROM evaluations WHERE user_id = ? AND image_path = ? LIMIT 1",
+            (uid, image_path),
+        ).fetchone()
+        if existing:
+            return (None, False)
+
         # Check if old columns exist for backward compatibility
         cursor = EVALUATIONS_DB.execute("PRAGMA table_info(evaluations)")
         columns = [row[1] for row in cursor.fetchall()]
@@ -366,7 +374,8 @@ def write_evaluation(
                     ),
                 )
         EVALUATIONS_DB.commit()
-    return ts
+    return (ts, True)
+
 
 def get_image_rating_count(image_path: str) -> int:
     """Count how many ratings (evaluations) an image has."""
