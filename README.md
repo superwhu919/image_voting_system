@@ -135,6 +135,7 @@ Example:
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `CSV_PATH` | No | `{BASE_DIR}/poem_pool.csv` | Path to `poem_pool.csv` |
+| `PROFILING_ENABLED` | No | `0` | Set to `1` to log request, segment, and lock timings to stderr for diagnosing slow concurrent usage. High `lock_wait.*` times under load indicate lock contention. |
 
 ## Data Files
 

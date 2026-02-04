@@ -14,3 +14,6 @@ MAX_PER_USER = 10
 CSV_ENCODING = "utf-8-sig"
 QUESTIONS_JSON_PATH = BASE_DIR / "questions.json"
 EVALUATIONS_CSV = BASE_DIR / "evaluations.csv"
+
+# Profiling: set PROFILING_ENABLED=1 to log request/segment/lock timings for diagnosing slow concurrent usage
+PROFILING_ENABLED = os.environ.get("PROFILING_ENABLED", "0") == "1"

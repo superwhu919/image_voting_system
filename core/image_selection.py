@@ -21,6 +21,7 @@ from data_logic.storage import (
     get_total_users_count,
     get_all_image_rating_counts,
 )
+from utils.profiling import profile, timed_lock
 
 
 @dataclass
@@ -161,20 +162,21 @@ class ImageSelectionSystem:
 
     def get_user_state(self, user_id: str) -> UserState:
         """Get or create user state for a user. Loads from database if user exists."""
-        with self._lock:
-            if user_id not in self.users:
-                user_state = UserState(user_id)
+        with profile("image_selection.get_user_state"):
+            with timed_lock(self._lock, "image_selection._lock"):
+                if user_id not in self.users:
+                    user_state = UserState(user_id)
+                    
+                    # Try to load existing state from database
+                    db_state = load_user_state(user_id)
+                    if db_state:
+                        user_state.seen_titles = db_state['seen_titles']
+                        # Option A: seen_paths = pending (list of {"p", "at"} or legacy strings)
+                        self._restore_pending_from_db(user_state, db_state.get('seen_paths', []))
+                    
+                    self.users[user_id] = user_state
                 
-                # Try to load existing state from database
-                db_state = load_user_state(user_id)
-                if db_state:
-                    user_state.seen_titles = db_state['seen_titles']
-                    # Option A: seen_paths = pending (list of {"p", "at"} or legacy strings)
-                    self._restore_pending_from_db(user_state, db_state.get('seen_paths', []))
-                
-                self.users[user_id] = user_state
-            
-            return self.users[user_id]
+                return self.users[user_id]
     
     def get_next_image(self, user_id: str) -> Optional[Tuple[ImageRecord, int]]:
         """
@@ -183,68 +185,69 @@ class ImageSelectionSystem:
         Returns:
             Tuple of (ImageRecord, 0) if successful, None if queue exhausted
         """
-        with self._lock:
-            user_state = self.get_user_state(user_id)
-            
-            attempts = 0
-            max_attempts = len(self.priority_queue) * 2  # Prevent infinite loops
-            checked_this_request = set()  # Track images we've already checked
-            images_to_add_back = []  # Track images to add back after loop
-            
-            while attempts < max_attempts:
-                if len(self.priority_queue) == 0:
-                    break
+        with profile("image_selection.get_next_image"):
+            with timed_lock(self._lock, "image_selection._lock"):
+                user_state = self.get_user_state(user_id)
                 
-                # Pop from heap (lowest rating first)
-                # Heap structure: (rating_count, tie_breaker, image_record)
-                rating_count, tie_breaker, image_record = heapq.heappop(self.priority_queue)
-                attempts += 1
+                attempts = 0
+                max_attempts = len(self.priority_queue) * 2  # Prevent infinite loops
+                checked_this_request = set()  # Track images we've already checked
+                images_to_add_back = []  # Track images to add back after loop
                 
-                # Check if entry is stale (rating was updated since this entry was added)
-                if rating_count != self.current_ratings.get(image_record.path, 0):
-                    continue  # Skip stale entry, don't add back
-                
-                # Check if already checked in this request (prevent infinite loop)
-                if image_record.path in checked_this_request:
-                    continue  # Skip, don't add back
-                
-                # Option A: skip if this path is already pending for this user (e.g. from DB after restart)
-                if image_record.path in user_state.pending_images:
-                    continue  # Skip, don't add back
-                
-                # Check if user has seen this poem
-                if image_record.poem_title not in user_state.seen_titles:
-                    # SUCCESS - assign the image
-                    user_state.add_pending(image_record)
-                    # Option A: persist pending so other workers/requests see it
-                    try:
-                        save_user_pending(user_id, self._pending_to_list(user_state))
-                    except Exception:
-                        if image_record.path in user_state.pending_images:
-                            del user_state.pending_images[image_record.path]
-                        raise
+                while attempts < max_attempts:
+                    if len(self.priority_queue) == 0:
+                        break
                     
-                    # Add back all checked images before returning
-                    for (rating, old_tie_breaker, img) in images_to_add_back:
-                        # Generate new tie-breaker to maintain randomness
-                        new_tie_breaker = random.random()
-                        heapq.heappush(self.priority_queue, (rating, new_tie_breaker, img))
+                    # Pop from heap (lowest rating first)
+                    # Heap structure: (rating_count, tie_breaker, image_record)
+                    rating_count, tie_breaker, image_record = heapq.heappop(self.priority_queue)
+                    attempts += 1
                     
-                    return (image_record, 0)  # Return 0 as queue_num for compatibility
-                else:
-                    # CONFLICT - user already saw this poem
-                    checked_this_request.add(image_record.path)
-                    images_to_add_back.append((rating_count, tie_breaker, image_record))  # Track for later
-                    continue  # Don't add back yet
-            
-            # Loop exhausted - add back all checked images
-            for (rating, old_tie_breaker, img) in images_to_add_back:
-                # Generate new tie-breaker to maintain randomness
-                new_tie_breaker = random.random()
-                heapq.heappush(self.priority_queue, (rating, new_tie_breaker, img))
-            
-            # All images seen or exhausted
-            return None
+                    # Check if entry is stale (rating was updated since this entry was added)
+                    if rating_count != self.current_ratings.get(image_record.path, 0):
+                        continue  # Skip stale entry, don't add back
+                    
+                    # Check if already checked in this request (prevent infinite loop)
+                    if image_record.path in checked_this_request:
+                        continue  # Skip, don't add back
+                    
+                    # Option A: skip if this path is already pending for this user (e.g. from DB after restart)
+                    if image_record.path in user_state.pending_images:
+                        continue  # Skip, don't add back
+                    
+                    # Check if user has seen this poem
+                    if image_record.poem_title not in user_state.seen_titles:
+                        # SUCCESS - assign the image
+                        user_state.add_pending(image_record)
+                        # Option A: persist pending so other workers/requests see it
+                        try:
+                            save_user_pending(user_id, self._pending_to_list(user_state))
+                        except Exception:
+                            if image_record.path in user_state.pending_images:
+                                del user_state.pending_images[image_record.path]
+                            raise
+                        
+                        # Add back all checked images before returning
+                        for (rating, old_tie_breaker, img) in images_to_add_back:
+                            # Generate new tie-breaker to maintain randomness
+                            new_tie_breaker = random.random()
+                            heapq.heappush(self.priority_queue, (rating, new_tie_breaker, img))
+                        
+                        return (image_record, 0)  # Return 0 as queue_num for compatibility
+                    else:
+                        # CONFLICT - user already saw this poem
+                        checked_this_request.add(image_record.path)
+                        images_to_add_back.append((rating_count, tie_breaker, image_record))  # Track for later
+                        continue  # Don't add back yet
+                
+                # Loop exhausted - add back all checked images
+                for (rating, old_tie_breaker, img) in images_to_add_back:
+                    # Generate new tie-breaker to maintain randomness
+                    new_tie_breaker = random.random()
+                    heapq.heappush(self.priority_queue, (rating, new_tie_breaker, img))
+                
+                # All images seen or exhausted
+                return None
     
     def submit_rating(self, user_id: str, image_path: str, poem_title: str):
         """
@@ -252,27 +255,28 @@ class ImageSelectionSystem:
         
         This confirms the image was rated and updates user state and priority queue.
         """
-        with self._lock:
-            user_state = self.get_user_state(user_id)
-            
-            # Find the image record
-            image = ImageRecord(path=image_path, poem_title=poem_title)
-            
-            # Update user state
-            user_state.add_seen(image)
-            
-            # Persist: seen_titles (completed) and pending (Option A: current pending_images)
-            save_user_state(user_id, user_state.seen_titles, set())
-            save_user_pending(user_id, self._pending_to_list(user_state))
-            
-            # Update rating count
-            new_rating = self.current_ratings.get(image_path, 0) + 1
-            self.current_ratings[image_path] = new_rating
-            
-            # Add back to heap with new rating (incremented)
-            # Generate new tie-breaker to maintain randomness
-            tie_breaker = random.random()
-            heapq.heappush(self.priority_queue, (new_rating, tie_breaker, image))
+        with profile("image_selection.submit_rating"):
+            with timed_lock(self._lock, "image_selection._lock"):
+                user_state = self.get_user_state(user_id)
+                
+                # Find the image record
+                image = ImageRecord(path=image_path, poem_title=poem_title)
+                
+                # Update user state
+                user_state.add_seen(image)
+                
+                # Persist: seen_titles (completed) and pending (Option A: current pending_images)
+                save_user_state(user_id, user_state.seen_titles, set())
+                save_user_pending(user_id, self._pending_to_list(user_state))
+                
+                # Update rating count
+                new_rating = self.current_ratings.get(image_path, 0) + 1
+                self.current_ratings[image_path] = new_rating
+                
+                # Add back to heap with new rating (incremented)
+                # Generate new tie-breaker to maintain randomness
+                tie_breaker = random.random()
+                heapq.heappush(self.priority_queue, (new_rating, tie_breaker, image))
     
     def handle_timeout(self, user_id: str, image_path: str, poem_title: str, original_queue: int):
         """
@@ -306,30 +310,31 @@ class ImageSelectionSystem:
         Args:
             timeout_minutes: Minutes before an image is considered timed out
         """
-        with self._lock:
-            timeout_delta = timedelta(minutes=timeout_minutes)
-            now = datetime.now()
-            
-            for user_state in self.users.values():
-                timed_out = []
-                for image_path, (image, assigned_time) in list(user_state.pending_images.items()):
-                    if now - assigned_time > timeout_delta:
-                        timed_out.append((image_path, image.poem_title))
+        with profile("image_selection.check_timeouts"):
+            with timed_lock(self._lock, "image_selection._lock"):
+                timeout_delta = timedelta(minutes=timeout_minutes)
+                now = datetime.now()
                 
-                for image_path, poem_title in timed_out:
-                    # Remove from pending
-                    if image_path in user_state.pending_images:
-                        del user_state.pending_images[image_path]
+                for user_state in self.users.values():
+                    timed_out = []
+                    for image_path, (image, assigned_time) in list(user_state.pending_images.items()):
+                        if now - assigned_time > timeout_delta:
+                            timed_out.append((image_path, image.poem_title))
                     
-                    # Add back to heap with current rating (not incremented)
-                    current_rating = self.current_ratings.get(image_path, 0)
-                    image = ImageRecord(path=image_path, poem_title=poem_title)
-                    # Generate new tie-breaker to maintain randomness
-                    tie_breaker = random.random()
-                    heapq.heappush(self.priority_queue, (current_rating, tie_breaker, image))
-                
-                if timed_out:
-                    save_user_pending(user_state.user_id, self._pending_to_list(user_state))
+                    for image_path, poem_title in timed_out:
+                        # Remove from pending
+                        if image_path in user_state.pending_images:
+                            del user_state.pending_images[image_path]
+                        
+                        # Add back to heap with current rating (not incremented)
+                        current_rating = self.current_ratings.get(image_path, 0)
+                        image = ImageRecord(path=image_path, poem_title=poem_title)
+                        # Generate new tie-breaker to maintain randomness
+                        tie_breaker = random.random()
+                        heapq.heappush(self.priority_queue, (current_rating, tie_breaker, image))
+                    
+                    if timed_out:
+                        save_user_pending(user_state.user_id, self._pending_to_list(user_state))
     
     def get_queue_state(self) -> Dict:
         """
@@ -340,77 +345,79 @@ class ImageSelectionSystem:
         - queue_size: Number of items in queue
         - rating_distribution: Count of items by rating
         """
-        with self._lock:
-            # Create a copy of the queue to inspect without modifying it
-            queue_copy = list(self.priority_queue)
-            
-            # Sort by rating for display (heapq maintains heap property, not sorted order)
-            queue_items = []
-            for entry in queue_copy:
-                # Handle both old 2-tuple and new 3-tuple formats for backward compatibility
-                if len(entry) == 3:
-                    rating_count, tie_breaker, image_record = entry
-                else:
-                    rating_count, image_record = entry
-                    tie_breaker = 0  # Default for old format
+        with profile("image_selection.get_queue_state"):
+            with timed_lock(self._lock, "image_selection._lock"):
+                # Create a copy of the queue to inspect without modifying it
+                queue_copy = list(self.priority_queue)
                 
-                queue_items.append({
-                    'rating_count': rating_count,
-                    'image_path': image_record.path,
-                    'poem_title': image_record.poem_title,
-                    'current_rating': self.current_ratings.get(image_record.path, 0),
-                    'tie_breaker': tie_breaker  # Store tie_breaker to preserve randomized order
-                })
-            
-            # Sort by rating count only (not by path) to preserve randomized order within same rating
-            queue_items.sort(key=lambda x: (x['rating_count'], x['tie_breaker']))
-            
-            # Calculate rating distribution
-            rating_distribution = {}
-            for item in queue_items:
-                rating = item['rating_count']
-                rating_distribution[rating] = rating_distribution.get(rating, 0) + 1
+                # Sort by rating for display (heapq maintains heap property, not sorted order)
+                queue_items = []
+                for entry in queue_copy:
+                    # Handle both old 2-tuple and new 3-tuple formats for backward compatibility
+                    if len(entry) == 3:
+                        rating_count, tie_breaker, image_record = entry
+                    else:
+                        rating_count, image_record = entry
+                        tie_breaker = 0  # Default for old format
+                    
+                    queue_items.append({
+                        'rating_count': rating_count,
+                        'image_path': image_record.path,
+                        'poem_title': image_record.poem_title,
+                        'current_rating': self.current_ratings.get(image_record.path, 0),
+                        'tie_breaker': tie_breaker  # Store tie_breaker to preserve randomized order
+                    })
+                
+                # Sort by rating count only (not by path) to preserve randomized order within same rating
+                queue_items.sort(key=lambda x: (x['rating_count'], x['tie_breaker']))
+                
+                # Calculate rating distribution
+                rating_distribution = {}
+                for item in queue_items:
+                    rating = item['rating_count']
+                    rating_distribution[rating] = rating_distribution.get(rating, 0) + 1
 
-            # Concurrent users = users with at least one pending image (assigned but not yet submitted)
-            concurrent_users = sum(1 for u in self.users.values() if u.pending_images)
-            
-            return {
-                'queue_items': queue_items,
-                'queue_size': len(self.priority_queue),
-                'rating_distribution': rating_distribution,
-                'total_images': len(self.all_images),
-                'active_users': get_total_users_count(),
-                'concurrent_users': concurrent_users,
-            }
+                # Concurrent users = users with at least one pending image (assigned but not yet submitted)
+                concurrent_users = sum(1 for u in self.users.values() if u.pending_images)
+                
+                return {
+                    'queue_items': queue_items,
+                    'queue_size': len(self.priority_queue),
+                    'rating_distribution': rating_distribution,
+                    'total_images': len(self.all_images),
+                    'active_users': get_total_users_count(),
+                    'concurrent_users': concurrent_users,
+                }
     
     def get_statistics(self) -> Dict:
         """Get statistics about the system state (from DB for accuracy after restart)."""
-        with self._lock:
-            total_ratings = get_total_ratings_count()
-            active_users = get_total_users_count()
-            # Compute per-image stats from DB (catalog images only) so they're correct after restart
-            db_rating_counts = get_all_image_rating_counts()
-            counts = [db_rating_counts.get(img.path, 0) for img in self.all_images]
-            if counts:
-                images_with_5_plus = sum(1 for c in counts if c >= 5)
-                images_with_0_4 = sum(1 for c in counts if 0 <= c < 5)
-                min_ratings = min(counts)
-                max_ratings = max(counts)
-                mean_ratings = sum(counts) / len(counts)
-                sorted_counts = sorted(counts)
-                median_ratings = sorted_counts[len(sorted_counts) // 2]
-            else:
-                images_with_5_plus = images_with_0_4 = min_ratings = max_ratings = mean_ratings = median_ratings = 0
+        with profile("image_selection.get_statistics"):
+            with timed_lock(self._lock, "image_selection._lock"):
+                total_ratings = get_total_ratings_count()
+                active_users = get_total_users_count()
+                # Compute per-image stats from DB (catalog images only) so they're correct after restart
+                db_rating_counts = get_all_image_rating_counts()
+                counts = [db_rating_counts.get(img.path, 0) for img in self.all_images]
+                if counts:
+                    images_with_5_plus = sum(1 for c in counts if c >= 5)
+                    images_with_0_4 = sum(1 for c in counts if 0 <= c < 5)
+                    min_ratings = min(counts)
+                    max_ratings = max(counts)
+                    mean_ratings = sum(counts) / len(counts)
+                    sorted_counts = sorted(counts)
+                    median_ratings = sorted_counts[len(sorted_counts) // 2]
+                else:
+                    images_with_5_plus = images_with_0_4 = min_ratings = max_ratings = mean_ratings = median_ratings = 0
 
-            return {
-                'total_images': len(self.all_images),
-                'total_ratings': total_ratings,
-                'images_with_5_plus_ratings': images_with_5_plus,
-                'images_with_0_4_ratings': images_with_0_4,
-                'min_ratings_per_image': min_ratings,
-                'max_ratings_per_image': max_ratings,
-                'mean_ratings_per_image': mean_ratings,
-                'median_ratings_per_image': median_ratings,
-                'queue_size': len(self.priority_queue),
-                'active_users': active_users,
-            }
+                return {
+                    'total_images': len(self.all_images),
+                    'total_ratings': total_ratings,
+                    'images_with_5_plus_ratings': images_with_5_plus,
+                    'images_with_0_4_ratings': images_with_0_4,
+                    'min_ratings_per_image': min_ratings,
+                    'max_ratings_per_image': max_ratings,
+                    'mean_ratings_per_image': mean_ratings,
+                    'median_ratings_per_image': median_ratings,
+                    'queue_size': len(self.priority_queue),
+                    'active_users': active_users,
+                }

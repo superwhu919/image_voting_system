@@ -4,6 +4,7 @@ import threading
 import json
 from datetime import datetime
 from config import USERS_DB_PATH, EVALUATIONS_DB_PATH
+from utils.profiling import profile, timed_lock
 
 WRITE_LOCK = threading.Lock()
 
@@ -107,99 +108,108 @@ EVALUATIONS_DB = connect_evaluations_db()
 
 def user_count(uid: str) -> int:
     """Count how many evaluations a user has completed."""
-    with WRITE_LOCK:
-        (n,) = EVALUATIONS_DB.execute("SELECT COUNT(*) FROM evaluations WHERE user_id=?", (uid,)).fetchone()
+    with profile("storage.user_count"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            (n,) = EVALUATIONS_DB.execute("SELECT COUNT(*) FROM evaluations WHERE user_id=?", (uid,)).fetchone()
     return int(n or 0)
 
 
 def get_total_users_count() -> int:
     """Get total number of users in the system (from users table)."""
-    with WRITE_LOCK:
-        (count,) = USERS_DB.execute("SELECT COUNT(*) FROM users").fetchone()
+    with profile("storage.get_total_users_count"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            (count,) = USERS_DB.execute("SELECT COUNT(*) FROM users").fetchone()
     return int(count or 0)
 
 
 def get_user_demographics(uid: str) -> dict:
     """Get user demographics (age, gender, education) from users table, or from first evaluation record."""
-    with WRITE_LOCK:
-        # First try to get from users table (stored when user starts)
-        row = USERS_DB.execute(
-            "SELECT user_age, user_gender, user_education, user_limit FROM users WHERE user_id=?",
-            (uid,)
-        ).fetchone()
-        if row:
-            return {
-                "age": row[0],
-                "gender": row[1] or "",
-                "education": row[2] or "",
-                "user_limit": row[3],  # Can be None
-            }
-        # Fall back to evaluations table (for backward compatibility)
-        row = EVALUATIONS_DB.execute(
-            "SELECT user_age, user_gender, user_education FROM evaluations WHERE user_id=? LIMIT 1",
-            (uid,)
-        ).fetchone()
-        if row:
-            return {
-                "age": row[0],
-                "gender": row[1] or "",
-                "education": row[2] or "",
-                "user_limit": None,
-            }
-    return None
+    result = None
+    with profile("storage.get_user_demographics"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            # First try to get from users table (stored when user starts)
+            row = USERS_DB.execute(
+                "SELECT user_age, user_gender, user_education, user_limit FROM users WHERE user_id=?",
+                (uid,)
+            ).fetchone()
+            if row:
+                result = {
+                    "age": row[0],
+                    "gender": row[1] or "",
+                    "education": row[2] or "",
+                    "user_limit": row[3],  # Can be None
+                }
+            else:
+                # Fall back to evaluations table (for backward compatibility)
+                row = EVALUATIONS_DB.execute(
+                    "SELECT user_age, user_gender, user_education FROM evaluations WHERE user_id=? LIMIT 1",
+                    (uid,)
+                ).fetchone()
+                if row:
+                    result = {
+                        "age": row[0],
+                        "gender": row[1] or "",
+                        "education": row[2] or "",
+                        "user_limit": None,
+                    }
+    return result
 
 def get_user_limit(uid: str) -> int:
     """Get user-specific limit, or None if using default."""
-    with WRITE_LOCK:
-        row = USERS_DB.execute(
-            "SELECT user_limit FROM users WHERE user_id=?",
-            (uid,)
-        ).fetchone()
-        if row and row[0] is not None:
-            return int(row[0])
-    return None
+    result = None
+    with profile("storage.get_user_limit"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            row = USERS_DB.execute(
+                "SELECT user_limit FROM users WHERE user_id=?",
+                (uid,)
+            ).fetchone()
+            if row and row[0] is not None:
+                result = int(row[0])
+    return result
 
 def increase_user_limit(uid: str, increment: int = 5) -> int:
     """Increase user's limit by increment. Returns new limit."""
-    with WRITE_LOCK:
-        # Get current limit directly (don't call get_user_limit to avoid deadlock)
-        row = USERS_DB.execute(
-            "SELECT user_limit FROM users WHERE user_id=?",
-            (uid,)
-        ).fetchone()
-        
-        if row and row[0] is not None:
-            current_limit = int(row[0])
-        else:
-            # User doesn't have a custom limit yet, get from config
-            from config import MAX_PER_USER
-            current_limit = MAX_PER_USER
-        
-        new_limit = current_limit + increment
-        
-        # Update user limit (user should exist since start_session creates them first)
-        # Use UPDATE with WHERE to ensure we only update existing users
-        USERS_DB.execute(
-            """UPDATE users SET user_limit = ? WHERE user_id = ?""",
-            (new_limit, uid)
-        )
-        # If user doesn't exist, this won't update anything, but that's okay
-        # since start_session should have created the user first
-        USERS_DB.commit()
+    with profile("storage.increase_user_limit"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            # Get current limit directly (don't call get_user_limit to avoid deadlock)
+            row = USERS_DB.execute(
+                "SELECT user_limit FROM users WHERE user_id=?",
+                (uid,)
+            ).fetchone()
+            
+            if row and row[0] is not None:
+                current_limit = int(row[0])
+            else:
+                # User doesn't have a custom limit yet, get from config
+                from config import MAX_PER_USER
+                current_limit = MAX_PER_USER
+            
+            new_limit = current_limit + increment
+            
+            # Update user limit (user should exist since start_session creates them first)
+            # Use UPDATE with WHERE to ensure we only update existing users
+            USERS_DB.execute(
+                """UPDATE users SET user_limit = ? WHERE user_id = ?""",
+                (new_limit, uid)
+            )
+            # If user doesn't exist, this won't update anything, but that's okay
+            # since start_session should have created the user first
+            USERS_DB.commit()
     
     return new_limit
 
 def store_user_demographics(uid: str, user_age: int = None, user_gender: str = "", user_education: str = ""):
     """Store user demographics when user starts a session."""
     ts = datetime.utcnow().isoformat()
-    with WRITE_LOCK:
-        # Use INSERT OR REPLACE to update if user already exists
-        USERS_DB.execute(
-            """INSERT OR REPLACE INTO users(user_id, user_age, user_gender, user_education, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (uid, user_age, user_gender, user_education, ts)
-        )
-        USERS_DB.commit()
+    with profile("storage.store_user_demographics"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            # Use INSERT OR REPLACE to update if user already exists
+            USERS_DB.execute(
+                """INSERT OR REPLACE INTO users(user_id, user_age, user_gender, user_education, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (uid, user_age, user_gender, user_education, ts)
+            )
+            USERS_DB.commit()
 
 def write_evaluation(
     uid,
@@ -254,26 +264,27 @@ def write_evaluation(
     answers_json = json.dumps(all_answers, ensure_ascii=False)
     
     ts = datetime.utcnow().isoformat()
-    with WRITE_LOCK:
-        # Idempotent submit: one evaluation per (user_id, image_path)
-        existing = EVALUATIONS_DB.execute(
-            "SELECT 1 FROM evaluations WHERE user_id = ? AND image_path = ? LIMIT 1",
-            (uid, image_path),
-        ).fetchone()
-        if existing:
-            return (None, False)
+    with profile("storage.write_evaluation"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            # Idempotent submit: one evaluation per (user_id, image_path)
+            existing = EVALUATIONS_DB.execute(
+                "SELECT 1 FROM evaluations WHERE user_id = ? AND image_path = ? LIMIT 1",
+                (uid, image_path),
+            ).fetchone()
+            if existing:
+                return (None, False)
 
-        # Check if old columns exist for backward compatibility
-        cursor = EVALUATIONS_DB.execute("PRAGMA table_info(evaluations)")
-        columns = [row[1] for row in cursor.fetchall()]
-        has_old_columns = 'q0_answer' in columns
-        has_q1_1_right_answer = 'q1_1_right_answer' in columns
-        
-        if has_old_columns:
-            # Old schema: include old columns for backward compatibility
-            if has_q1_1_right_answer:
-                EVALUATIONS_DB.execute(
-                    """INSERT INTO evaluations(
+            # Check if old columns exist for backward compatibility
+            cursor = EVALUATIONS_DB.execute("PRAGMA table_info(evaluations)")
+            columns = [row[1] for row in cursor.fetchall()]
+            has_old_columns = 'q0_answer' in columns
+            has_q1_1_right_answer = 'q1_1_right_answer' in columns
+            
+            if has_old_columns:
+                # Old schema: include old columns for backward compatibility
+                if has_q1_1_right_answer:
+                    EVALUATIONS_DB.execute(
+                        """INSERT INTO evaluations(
                         ts, user_id, user_age, user_gender, user_education,
                         poem_title, image_path, image_type, q1_1_right_answer,
                         phase1_choice, phase1_response_ms,
@@ -302,98 +313,100 @@ def write_evaluation(
                         answers_json,  # New JSON column with all answers
                         phase2_response_ms, total_response_ms
                     ),
-                )
+                    )
+                else:
+                    # Old schema without q1_1_right_answer column
+                    EVALUATIONS_DB.execute(
+                        """INSERT INTO evaluations(
+                            ts, user_id, user_age, user_gender, user_education,
+                            poem_title, image_path, image_type,
+                            phase1_choice, phase1_response_ms,
+                            q0_answer, q1_answer, q2_answer, q3_answer, q4_answer, q5_answer,
+                            q6_answer, q7_answer, q8_answer, q9_answer, q10_answer,
+                            q11_answer, q12_answer, answers_json,
+                            phase2_response_ms, total_response_ms
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            ts, uid, user_age, user_gender, user_education,
+                            poem_title, image_path, image_type,
+                            phase1_choice, phase1_response_ms,
+                            phase1_choice,  # q0_answer is the same as phase1_choice (A/B/C/D)
+                            phase2_answers.get("q2-1", ""),  # q1_answer
+                            phase2_answers.get("q2-2", ""),  # q2_answer
+                            phase2_answers.get("q2-3", ""),  # q3_answer
+                            phase2_answers.get("q2-4", ""),  # q4_answer
+                            phase2_answers.get("q2-5", ""),  # q5_answer
+                            phase2_answers.get("q2-6", ""),  # q6_answer
+                            phase2_answers.get("q2-7", ""),  # q7_answer
+                            phase2_answers.get("q2-8", ""),  # q8_answer
+                            phase2_answers.get("q2-9", ""),  # q9_answer
+                            phase2_answers.get("q2-10", ""),  # q10_answer
+                            phase2_answers.get("q2-11", ""),  # q11_answer
+                            phase2_answers.get("q2-12", ""),  # q12_answer
+                            answers_json,  # New JSON column with all answers
+                            phase2_response_ms, total_response_ms
+                        ),
+                    )
             else:
-                # Old schema without q1_1_right_answer column
-                EVALUATIONS_DB.execute(
-                    """INSERT INTO evaluations(
-                        ts, user_id, user_age, user_gender, user_education,
-                        poem_title, image_path, image_type,
-                        phase1_choice, phase1_response_ms,
-                        q0_answer, q1_answer, q2_answer, q3_answer, q4_answer, q5_answer,
-                        q6_answer, q7_answer, q8_answer, q9_answer, q10_answer,
-                        q11_answer, q12_answer, answers_json,
-                        phase2_response_ms, total_response_ms
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        ts, uid, user_age, user_gender, user_education,
-                        poem_title, image_path, image_type,
-                        phase1_choice, phase1_response_ms,
-                        phase1_choice,  # q0_answer is the same as phase1_choice (A/B/C/D)
-                        phase2_answers.get("q2-1", ""),  # q1_answer
-                        phase2_answers.get("q2-2", ""),  # q2_answer
-                        phase2_answers.get("q2-3", ""),  # q3_answer
-                        phase2_answers.get("q2-4", ""),  # q4_answer
-                        phase2_answers.get("q2-5", ""),  # q5_answer
-                        phase2_answers.get("q2-6", ""),  # q6_answer
-                        phase2_answers.get("q2-7", ""),  # q7_answer
-                        phase2_answers.get("q2-8", ""),  # q8_answer
-                        phase2_answers.get("q2-9", ""),  # q9_answer
-                        phase2_answers.get("q2-10", ""),  # q10_answer
-                        phase2_answers.get("q2-11", ""),  # q11_answer
-                        phase2_answers.get("q2-12", ""),  # q12_answer
-                        answers_json,  # New JSON column with all answers
-                        phase2_response_ms, total_response_ms
-                    ),
-                )
-        else:
-            # New schema: only use JSON column (phase1_choice is in JSON as "q1-1")
-            if has_q1_1_right_answer:
-                EVALUATIONS_DB.execute(
-                    """INSERT INTO evaluations(
-                        ts, user_id, user_age, user_gender, user_education,
-                        poem_title, image_path, image_type, q1_1_right_answer,
-                        phase1_response_ms,
-                        answers_json,
-                        phase2_response_ms, total_response_ms
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
+                # New schema: only use JSON column (phase1_choice is in JSON as "q1-1")
+                if has_q1_1_right_answer:
+                    EVALUATIONS_DB.execute(
+                        """INSERT INTO evaluations(
+                            ts, user_id, user_age, user_gender, user_education,
+                            poem_title, image_path, image_type, q1_1_right_answer,
+                            phase1_response_ms,
+                            answers_json,
+                            phase2_response_ms, total_response_ms
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
                         ts, uid, user_age, user_gender, user_education,
                         poem_title, image_path, image_type, target_letter or "",
                         phase1_response_ms,
                         answers_json,
                         phase2_response_ms, total_response_ms
-                    ),
-                )
-            else:
-                # New schema without q1_1_right_answer column (backward compatibility)
-                EVALUATIONS_DB.execute(
-                    """INSERT INTO evaluations(
-                        ts, user_id, user_age, user_gender, user_education,
-                        poem_title, image_path, image_type,
-                        phase1_response_ms,
-                        answers_json,
-                        phase2_response_ms, total_response_ms
-                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-                    (
-                        ts, uid, user_age, user_gender, user_education,
-                        poem_title, image_path, image_type,
-                        phase1_response_ms,
-                        answers_json,
-                        phase2_response_ms, total_response_ms
-                    ),
-                )
-        EVALUATIONS_DB.commit()
+                        ),
+                    )
+                else:
+                    # New schema without q1_1_right_answer column (backward compatibility)
+                    EVALUATIONS_DB.execute(
+                        """INSERT INTO evaluations(
+                            ts, user_id, user_age, user_gender, user_education,
+                            poem_title, image_path, image_type,
+                            phase1_response_ms,
+                            answers_json,
+                            phase2_response_ms, total_response_ms
+                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (
+                            ts, uid, user_age, user_gender, user_education,
+                            poem_title, image_path, image_type,
+                            phase1_response_ms,
+                            answers_json,
+                            phase2_response_ms, total_response_ms
+                        ),
+                    )
+            EVALUATIONS_DB.commit()
     return (ts, True)
 
 
 def get_image_rating_count(image_path: str) -> int:
     """Count how many ratings (evaluations) an image has."""
-    with WRITE_LOCK:
-        (count,) = EVALUATIONS_DB.execute(
-            "SELECT COUNT(*) FROM evaluations WHERE image_path = ?",
-            (image_path,)
-        ).fetchone()
+    with profile("storage.get_image_rating_count"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            (count,) = EVALUATIONS_DB.execute(
+                "SELECT COUNT(*) FROM evaluations WHERE image_path = ?",
+                (image_path,)
+            ).fetchone()
     return int(count or 0)
 
 def get_all_image_rating_counts() -> dict:
     """Get rating counts for all images that have been evaluated.
     Returns: {image_path: rating_count}
     """
-    with WRITE_LOCK:
-        rows = EVALUATIONS_DB.execute(
-            "SELECT image_path, COUNT(*) as count FROM evaluations GROUP BY image_path"
-        ).fetchall()
+    with profile("storage.get_all_image_rating_counts"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            rows = EVALUATIONS_DB.execute(
+                "SELECT image_path, COUNT(*) as count FROM evaluations GROUP BY image_path"
+            ).fetchall()
     return {image_path: int(count) for image_path, count in rows}
 
 def load_user_state(user_id: str) -> dict:
@@ -403,39 +416,40 @@ def load_user_state(user_id: str) -> dict:
     Returns:
         dict with 'seen_titles' and 'seen_paths' as sets, or None if user doesn't exist
     """
-    with WRITE_LOCK:
-        row = USERS_DB.execute(
-            "SELECT seen_titles, seen_paths FROM users WHERE user_id=?",
-            (user_id,)
-        ).fetchone()
-        
-        if row is None:
-            return None
-        
-        seen_titles_json = row[0]
-        seen_paths_json = row[1]
-        
-        # Parse seen_titles as set; seen_paths as raw list (Option A: pending list of {"p", "at"} or legacy strings)
-        seen_titles = set()
-        if seen_titles_json:
-            try:
-                seen_titles = set(json.loads(seen_titles_json))
-            except (json.JSONDecodeError, TypeError):
+    result = None
+    with profile("storage.load_user_state"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            row = USERS_DB.execute(
+                "SELECT seen_titles, seen_paths FROM users WHERE user_id=?",
+                (user_id,)
+            ).fetchone()
+            
+            if row is not None:
+                seen_titles_json = row[0]
+                seen_paths_json = row[1]
+                
+                # Parse seen_titles as set; seen_paths as raw list (Option A: pending list of {"p", "at"} or legacy strings)
                 seen_titles = set()
+                if seen_titles_json:
+                    try:
+                        seen_titles = set(json.loads(seen_titles_json))
+                    except (json.JSONDecodeError, TypeError):
+                        seen_titles = set()
 
-        seen_paths_raw = []
-        if seen_paths_json:
-            try:
-                parsed = json.loads(seen_paths_json)
-                if isinstance(parsed, list):
-                    seen_paths_raw = parsed
-            except (json.JSONDecodeError, TypeError):
-                pass
+                seen_paths_raw = []
+                if seen_paths_json:
+                    try:
+                        parsed = json.loads(seen_paths_json)
+                        if isinstance(parsed, list):
+                            seen_paths_raw = parsed
+                    except (json.JSONDecodeError, TypeError):
+                        pass
 
-        return {
-            'seen_titles': seen_titles,
-            'seen_paths': seen_paths_raw
-        }
+                result = {
+                    'seen_titles': seen_titles,
+                    'seen_paths': seen_paths_raw
+                }
+    return result
 
 
 def save_user_state(user_id: str, seen_titles: set, seen_paths: set):
@@ -447,39 +461,42 @@ def save_user_state(user_id: str, seen_titles: set, seen_paths: set):
         seen_titles: Set of poem titles the user has seen
         seen_paths: Set of image paths the user has seen
     """
-    with WRITE_LOCK:
-        # Convert sets to JSON arrays
-        seen_titles_json = json.dumps(list(seen_titles), ensure_ascii=False)
-        seen_paths_json = json.dumps(list(seen_paths), ensure_ascii=False)
-        
-        # Update user state (user must exist - this is called after user is created)
-        USERS_DB.execute(
-            """UPDATE users SET seen_titles = ?, seen_paths = ? WHERE user_id = ?""",
-            (seen_titles_json, seen_paths_json, user_id)
-        )
-        USERS_DB.commit()
+    with profile("storage.save_user_state"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            # Convert sets to JSON arrays
+            seen_titles_json = json.dumps(list(seen_titles), ensure_ascii=False)
+            seen_paths_json = json.dumps(list(seen_paths), ensure_ascii=False)
+            
+            # Update user state (user must exist - this is called after user is created)
+            USERS_DB.execute(
+                """UPDATE users SET seen_titles = ?, seen_paths = ? WHERE user_id = ?""",
+                (seen_titles_json, seen_paths_json, user_id)
+            )
+            USERS_DB.commit()
 
 
 def save_user_seen_titles(user_id: str, seen_titles: set):
     """Save only seen_titles to database."""
-    with WRITE_LOCK:
-        seen_titles_json = json.dumps(list(seen_titles), ensure_ascii=False)
-        USERS_DB.execute(
-            """UPDATE users SET seen_titles = ? WHERE user_id = ?""",
-            (seen_titles_json, user_id)
-        )
-        USERS_DB.commit()
+    with profile("storage.save_user_seen_titles"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            seen_titles_json = json.dumps(list(seen_titles), ensure_ascii=False)
+            USERS_DB.execute(
+                """UPDATE users SET seen_titles = ? WHERE user_id = ?""",
+                (seen_titles_json, user_id)
+            )
+            USERS_DB.commit()
 
 
 def save_user_seen_paths(user_id: str, seen_paths: set):
     """Save only seen_paths to database."""
-    with WRITE_LOCK:
-        seen_paths_json = json.dumps(list(seen_paths), ensure_ascii=False)
-        USERS_DB.execute(
-            """UPDATE users SET seen_paths = ? WHERE user_id = ?""",
-            (seen_paths_json, user_id)
-        )
-        USERS_DB.commit()
+    with profile("storage.save_user_seen_paths"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            seen_paths_json = json.dumps(list(seen_paths), ensure_ascii=False)
+            USERS_DB.execute(
+                """UPDATE users SET seen_paths = ? WHERE user_id = ?""",
+                (seen_paths_json, user_id)
+            )
+            USERS_DB.commit()
 
 
 def save_user_pending(user_id: str, pending_list: list):
@@ -488,20 +505,22 @@ def save_user_pending(user_id: str, pending_list: list):
     pending_list: list of {"p": path, "at": iso_datetime_str} for each assigned-but-not-submitted image.
     Stored in users.seen_paths so other workers/restarts see it.
     """
-    with WRITE_LOCK:
-        pending_json = json.dumps(pending_list, ensure_ascii=False)
-        USERS_DB.execute(
-            """UPDATE users SET seen_paths = ? WHERE user_id = ?""",
-            (pending_json, user_id)
-        )
-        USERS_DB.commit()
+    with profile("storage.save_user_pending"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            pending_json = json.dumps(pending_list, ensure_ascii=False)
+            USERS_DB.execute(
+                """UPDATE users SET seen_paths = ? WHERE user_id = ?""",
+                (pending_json, user_id)
+            )
+            USERS_DB.commit()
 
 
 def get_total_ratings_count() -> int:
     """Get total number of ratings collected from database."""
-    with WRITE_LOCK:
-        (count,) = EVALUATIONS_DB.execute("SELECT COUNT(*) FROM evaluations").fetchone()
-        return int(count or 0)
+    with profile("storage.get_total_ratings_count"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            (count,) = EVALUATIONS_DB.execute("SELECT COUNT(*) FROM evaluations").fetchone()
+    return int(count or 0)
 
 
 def get_coverage_metrics(total_images: int) -> dict:
@@ -568,14 +587,16 @@ def get_recent_completed_ratings(limit: int = 100) -> list:
     Returns:
         List of dicts with keys: user_id, image_path, poem_title, ts (timestamp)
     """
-    with WRITE_LOCK:
-        rows = EVALUATIONS_DB.execute(
-            """SELECT user_id, image_path, poem_title, ts 
-               FROM evaluations 
-               ORDER BY ts DESC 
-               LIMIT ?""",
-            (limit,)
-        ).fetchall()
+    rows = []
+    with profile("storage.get_recent_completed_ratings"):
+        with timed_lock(WRITE_LOCK, "WRITE_LOCK"):
+            rows = EVALUATIONS_DB.execute(
+                """SELECT user_id, image_path, poem_title, ts 
+                   FROM evaluations 
+                   ORDER BY ts DESC 
+                   LIMIT ?""",
+                (limit,)
+            ).fetchall()
     
     return [
         {
