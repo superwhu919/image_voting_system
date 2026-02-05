@@ -8,9 +8,9 @@ dump_users_to_csv) or equivalent.
 
 Usage:
   python utils/rebuild_db_from_csv.py
-  # One run: rewrites image_path (remote prefix -> local IMAGE_DIR) and .jpg -> .png.
+  # Default: rewrites image_path (remote prefix -> local IMAGE_DIR) and .jpg -> .png.
   python utils/rebuild_db_from_csv.py --evaluations-csv path/to/evaluations.csv --users-csv path/to/users.csv
-  # Use --no-image-path-rewrite to disable path and .png normalization.
+  # Use --no-replace to disable path and extension rewrite.
 """
 
 import argparse
@@ -155,7 +155,7 @@ def rebuild_evaluations(
             _coerce_value(row.get(col), col, INTEGER_EVAL_COLUMNS)
             for col in EVALUATIONS_COLUMNS
         ]
-        # Rewrite image_path: optional prefix replacement, then .jpg -> .png
+        # Rewrite image_path: optional prefix replacement and .jpg -> .png (only when replace enabled)
         if "image_path" in EVALUATIONS_COLUMNS:
             idx = EVALUATIONS_COLUMNS.index("image_path")
             raw = row.get("image_path") or ""
@@ -163,7 +163,7 @@ def rebuild_evaluations(
                 raw = _rewrite_image_path(
                     raw, image_path_old_prefix, image_path_new_prefix
                 )
-            raw = _jpg_to_png(raw)
+                raw = _jpg_to_png(raw)
             values[idx] = _coerce_value(raw, "image_path", set())
         conn.execute(insert_sql, values)
         count += 1
@@ -251,19 +251,20 @@ def main():
         help="Local prefix to use for image_path (default: local IMAGE_DIR from config)",
     )
     parser.add_argument(
-        "--no-image-path-rewrite",
+        "--no-replace",
         action="store_true",
-        help="Disable automatic path and .jpg->.png rewrite for image_path",
+        help="Do not replace image_path prefix or .jpg->.png when loading evaluations (default is to replace).",
     )
     args = parser.parse_args()
+    replace = not args.no_replace
 
-    # Apply path + png in one go: use provided old prefix or default, new prefix = local IMAGE_DIR
-    if args.no_image_path_rewrite:
-        old_prefix = ""
-        new_prefix = ""
-    else:
+    # Apply path + png when replace is True: use provided old prefix or default, new prefix = local IMAGE_DIR
+    if replace:
         old_prefix = args.image_path_old_prefix or DEFAULT_IMAGE_PATH_OLD_PREFIX
         new_prefix = args.image_path_new_prefix or str(IMAGE_DIR)
+    else:
+        old_prefix = ""
+        new_prefix = ""
     n_eval = rebuild_evaluations(
         args.evaluations_csv,
         args.evaluations_db,
