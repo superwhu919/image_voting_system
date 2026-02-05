@@ -3,6 +3,7 @@ __pycache__/
 .env
 .DS_Store
 *.log
+logs/
 .gradio
 local_readme.txt
 

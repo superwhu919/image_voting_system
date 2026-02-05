@@ -1,9 +1,14 @@
 # storage.py
+import json
+import logging
 import sqlite3
 import threading
-import json
+import time
 from datetime import datetime
+
 from config import USERS_DB_PATH, EVALUATIONS_DB_PATH
+
+logger = logging.getLogger("submit_timing")
 
 WRITE_LOCK = threading.Lock()
 
@@ -255,12 +260,15 @@ def write_evaluation(
     
     ts = datetime.utcnow().isoformat()
     with WRITE_LOCK:
+        t0 = time.perf_counter()
         # Idempotent submit: one evaluation per (user_id, image_path)
         existing = EVALUATIONS_DB.execute(
             "SELECT 1 FROM evaluations WHERE user_id = ? AND image_path = ? LIMIT 1",
             (uid, image_path),
         ).fetchone()
         if existing:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            logger.info("[submit_timing] write_evaluation done uid=%s elapsed_ms=%.2f inserted=False", uid, elapsed_ms)
             return (None, False)
 
         # Check if old columns exist for backward compatibility
@@ -374,6 +382,8 @@ def write_evaluation(
                     ),
                 )
         EVALUATIONS_DB.commit()
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        logger.info("[submit_timing] write_evaluation done uid=%s elapsed_ms=%.2f inserted=True", uid, elapsed_ms)
     return (ts, True)
 
 

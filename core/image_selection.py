@@ -7,12 +7,14 @@ images with fewer ratings and prevents race conditions.
 
 import csv
 import heapq
+import logging
 import random
 import threading
+import time
 from dataclasses import dataclass
-from typing import Optional, Tuple, Set, Dict
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional, Tuple, Set, Dict
 from data_logic.storage import (
     load_user_state,
     save_user_state,
@@ -21,6 +23,8 @@ from data_logic.storage import (
     get_total_users_count,
     get_all_image_rating_counts,
 )
+
+logger = logging.getLogger("submit_timing")
 
 
 @dataclass
@@ -252,6 +256,7 @@ class ImageSelectionSystem:
         
         This confirms the image was rated and updates user state and priority queue.
         """
+        t0 = time.perf_counter()
         with self._lock:
             user_state = self.get_user_state(user_id)
             
@@ -273,7 +278,9 @@ class ImageSelectionSystem:
             # Generate new tie-breaker to maintain randomness
             tie_breaker = random.random()
             heapq.heappush(self.priority_queue, (new_rating, tie_breaker, image))
-    
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        logger.info("[submit_timing] submit_rating done user_id=%s elapsed_ms=%.2f", user_id, elapsed_ms)
+
     def handle_timeout(self, user_id: str, image_path: str, poem_title: str, original_queue: int):
         """
         Handle timeout: return image to priority queue.

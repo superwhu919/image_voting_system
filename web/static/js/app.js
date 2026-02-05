@@ -630,7 +630,8 @@ function handleSubmit() {
         submitBtn.disabled = true;
         submitBtn.classList.add('submit-clicked');
     }
-    
+
+    const submitClickedAt = performance.now();
     fetch(`${API_BASE}/submit`, {
         method: 'POST',
         headers: {
@@ -656,6 +657,8 @@ function handleSubmit() {
     })
     .then(response => response.json())
     .then(data => {
+        const roundTripMs = Math.round(performance.now() - submitClickedAt);
+        console.log('[submit_timing] round_trip_ms', roundTripMs);
         if (data.status === 'success') {
             // Reset for next evaluation (preserve user info)
             const preservedUserInfo = {
@@ -752,6 +755,8 @@ function handleSubmit() {
         }
     })
     .catch(error => {
+        const roundTripMs = Math.round(performance.now() - submitClickedAt);
+        console.log('[submit_timing] round_trip_ms', roundTripMs);
         showStatus('发生错误，请重试。', 'error');
         if (submitBtn) {
             submitBtn.disabled = false;

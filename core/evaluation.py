@@ -1,10 +1,15 @@
 # Core evaluation logic: poem selection and formatting
 import heapq
+import logging
 import random
+import time
 from pathlib import Path
+
+from core.image_selection import ImageSelectionSystem
 from data_logic.catalog import CATALOG, POEM_INFO, get_distractors
 from data_logic.storage import get_all_image_rating_counts
-from core.image_selection import ImageSelectionSystem
+
+logger = logging.getLogger("submit_timing")
 
 
 def _extract_image_type(image_path: str) -> str:
@@ -63,6 +68,7 @@ def get_evaluation_item(user_id: str):
     poem_options_dict: {"A": poem_title, "B": distractor1, "C": distractor2, "D": distractor3}
     Returns None if user has seen all images.
     """
+    t0 = time.perf_counter()
     # Check for timeouts before selecting
     IMAGE_SELECTION_SYSTEM.check_timeouts(timeout_minutes=10)
     
@@ -97,7 +103,9 @@ def get_evaluation_item(user_id: str):
         options_dict[letter] = title
         if title == target_title:
             target_letter = letter
-    
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info("[submit_timing] get_evaluation_item done user_id=%s elapsed_ms=%.2f", user_id, elapsed_ms)
     return target_title, image_path, image_type, distractor_titles, options_dict, target_letter
 
 

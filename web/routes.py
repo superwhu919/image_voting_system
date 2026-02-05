@@ -1,18 +1,24 @@
 # FastAPI route handlers
+import logging
+import os
+import time
+import uuid
+from pathlib import Path
+from urllib.parse import unquote
+
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, FileResponse
-from starlette.templating import Jinja2Templates
 from pydantic import BaseModel
-from pathlib import Path
-import os
-from urllib.parse import unquote
-from urllib.parse import unquote
+from starlette.templating import Jinja2Templates
 
 from config import IMAGE_DIR
 from core import start_session, reveal_poem, update_phase2_answer, submit_evaluation, remaining
 from core.evaluation import IMAGE_SELECTION_SYSTEM
 from data_logic.catalog import CATALOG
 from data_logic.storage import get_coverage_metrics, increase_user_limit, get_recent_completed_ratings
+from web.submit_log_context import set_submit_log_context
+
+logger = logging.getLogger("submit_timing")
 
 
 # Request models
@@ -185,9 +191,24 @@ async def api_update_answer(request: UpdateAnswerRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _client_ip(req: Request) -> str:
+    """Client IP, respecting X-Forwarded-For when behind a proxy."""
+    forwarded = req.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if req.client:
+        return req.client.host or "-"
+    return "-"
+
+
 @router.post("/api/submit")
-async def api_submit(request: SubmitRequest):
+async def api_submit(http_request: Request, request: SubmitRequest):
     """Submit complete evaluation."""
+    request_id = uuid.uuid4().hex[:8]
+    client_ip = _client_ip(http_request)
+    set_submit_log_context(request_id=request_id, client_ip=client_ip, user_id=request.user_id or "-")
+    t0 = time.perf_counter()
+    logger.info("[submit_timing] api_submit start user_id=%s", request.user_id)
     try:
         result = submit_evaluation(
             uid=request.user_id,
@@ -206,7 +227,9 @@ async def api_submit(request: SubmitRequest):
             phase2_start_ms=request.phase2_start_ms,
             phase1_start_ms=request.phase1_start_ms,
         )
-        
+        total_ms = (time.perf_counter() - t0) * 1000
+        logger.info("[submit_timing] api_submit done user_id=%s total_ms=%.2f", request.user_id, total_ms)
+
         # Convert image path to URL
         if result.get("status") == "success" and result.get("image_path"):
             image_path = result["image_path"]

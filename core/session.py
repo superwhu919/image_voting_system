@@ -1,11 +1,14 @@
 # Core session management logic
-import time
 import json
+import logging
+import time
 
 from config import MAX_PER_USER, EVALUATIONS_CSV, QUESTIONS_JSON_PATH
-from data_logic.storage import user_count, write_evaluation, get_user_demographics, store_user_demographics, get_user_limit
-from data_logic.catalog import CATALOG
 from core.evaluation import get_evaluation_item, format_poem_data, format_poem_full, IMAGE_SELECTION_SYSTEM
+from data_logic.catalog import CATALOG
+from data_logic.storage import user_count, write_evaluation, get_user_demographics, store_user_demographics, get_user_limit
+
+logger = logging.getLogger("submit_timing")
 
 # Load questions
 with open(QUESTIONS_JSON_PATH, 'r', encoding='utf-8') as f:
@@ -308,7 +311,8 @@ def submit_evaluation(
     Returns dict with next evaluation or completion status.
     """
     now_ms = int(time.time() * 1000)
-    
+    t0 = time.perf_counter()
+
     if not uid:
         return {
             "status": "error",
@@ -365,9 +369,13 @@ def submit_evaluation(
         image_data = CATALOG.get(image_path)
         if image_data:
             image_type = image_data.get("image_type", "")
-    
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info("[submit_timing] submit_evaluation after_validation uid=%s elapsed_ms=%.2f", uid, elapsed_ms)
+
     # Write evaluation to database (idempotent: duplicate user+image returns inserted=False)
     # Note: phase1_answers (q1-2) are passed but not yet stored in DB schema
+    t_write = time.perf_counter()
     ts, inserted = write_evaluation(
         uid=uid,
         user_age=user_age,
@@ -384,11 +392,16 @@ def submit_evaluation(
         phase2_response_ms=phase2_ms,
         total_response_ms=total_ms,
     )
+    write_evaluation_ms = (time.perf_counter() - t_write) * 1000
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    logger.info("[submit_timing] submit_evaluation after_write_evaluation uid=%s elapsed_ms=%.2f write_evaluation_ms=%.2f", uid, elapsed_ms, write_evaluation_ms)
 
     # Only update selection state when we actually inserted (avoid double-count on duplicate submit)
     if inserted:
         IMAGE_SELECTION_SYSTEM.submit_rating(uid, image_path, poem_title)
-    
+        elapsed_ms = (time.perf_counter() - t0) * 1000
+        logger.info("[submit_timing] submit_evaluation after_submit_rating uid=%s elapsed_ms=%.2f", uid, elapsed_ms)
+
     # Check remaining AFTER writing - if 0, show limit_reached modal instead of next evaluation
     rem_after = remaining(uid)
     user_limit = get_user_limit(uid) or MAX_PER_USER
@@ -396,6 +409,8 @@ def submit_evaluation(
     
     if rem_after <= 0:
         # User has reached their limit - show limit_reached modal
+        total_ms = (time.perf_counter() - t0) * 1000
+        logger.info("[submit_timing] submit_evaluation total_ms=%.2f uid=%s status=limit_reached", total_ms, uid)
         return {
             "status": "limit_reached",
             "message": f"您已完成 {completed} 个评估。是否要继续？",
@@ -404,13 +419,18 @@ def submit_evaluation(
             "can_extend": True,
             "user_limit": user_limit,
         }
-    
+
     # Get next evaluation item (use uid as user_id)
     try:
+        t_get = time.perf_counter()
         result = get_evaluation_item(uid)
+        get_evaluation_item_ms = (time.perf_counter() - t_get) * 1000
+        logger.info("[submit_timing] submit_evaluation after_get_evaluation_item uid=%s get_evaluation_item_ms=%.2f", uid, get_evaluation_item_ms)
     except RuntimeError as e:
         # No more images available - user has seen all images
         if "No images available" in str(e) or "All queues exhausted" in str(e):
+            total_ms = (time.perf_counter() - t0) * 1000
+            logger.info("[submit_timing] submit_evaluation total_ms=%.2f uid=%s status=all_images_seen", total_ms, uid)
             return {
                 "status": "all_images_seen",
                 "message": "您已看过所有图片。没有更多图片可供评估。",
@@ -419,22 +439,26 @@ def submit_evaluation(
             }
         # Re-raise if it's a different RuntimeError
         raise
-    
+
     if result is None:
+        total_ms = (time.perf_counter() - t0) * 1000
+        logger.info("[submit_timing] submit_evaluation total_ms=%.2f uid=%s status=all_images_seen", total_ms, uid)
         return {
             "status": "all_images_seen",
             "message": "您已看过所有图片。没有更多图片可供评估。",
             "remaining": rem_after,
             "completed": completed,
         }
-    
+
     poem_title_next, image_path_next, image_type_next, _, options_dict_next, target_letter_next = result
-    
+
     # Format poem options data
     options_data_next = {}
     for letter in ["A", "B", "C", "D"]:
         options_data_next[letter] = format_poem_data(options_dict_next[letter], letter)
-    
+
+    total_ms = (time.perf_counter() - t0) * 1000
+    logger.info("[submit_timing] submit_evaluation total_ms=%.2f uid=%s status=success", total_ms, uid)
     return {
         "status": "success",
         "message": "已提交！下一组…",
