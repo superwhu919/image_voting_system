@@ -71,7 +71,8 @@ def get_evaluation_item(user_id: str):
     t0 = time.perf_counter()
     # Check for timeouts before selecting
     IMAGE_SELECTION_SYSTEM.check_timeouts(timeout_minutes=10)
-    
+    # Sync heap and counts from DB so multi-worker deployment stays fair
+    IMAGE_SELECTION_SYSTEM.sync_from_db()
     # Get next image from selection system
     result = IMAGE_SELECTION_SYSTEM.get_next_image(user_id)
     if result is None:

@@ -163,6 +163,22 @@ class ImageSelectionSystem:
             if path and path in path_to_record:
                 user_state.pending_images[path] = (path_to_record[path], assigned_at)
 
+    def sync_from_db(self) -> None:
+        """
+        Refresh current_ratings and the priority queue from the database.
+        Call this before get_next_image when running with multiple workers so
+        each worker sees up-to-date counts and the distribution stays fair.
+        """
+        rating_counts = get_all_image_rating_counts()
+        with self._lock:
+            self.current_ratings.clear()
+            self.priority_queue = []
+            for image in self.all_images:
+                count = rating_counts.get(image.path, 0)
+                self.current_ratings[image.path] = count
+                tie_breaker = random.random()
+                heapq.heappush(self.priority_queue, (count, tie_breaker, image))
+
     def get_user_state(self, user_id: str) -> UserState:
         """Get or create user state for a user. Loads from database if user exists."""
         with self._lock:
