@@ -276,6 +276,7 @@ image_path,rating_count
 /home/ubuntu/workspace/image_voting_system/all_images/咏怀古迹五首·其四_gpt.jpg,8
 /home/ubuntu/workspace/image_voting_system/all_images/塞下曲·饮马渡秋水_seedream.jpg,8
 /home/ubuntu/workspace/image_voting_system/all_images/夜归鹿门山歌_seedream.jpg,8
+/home/ubuntu/workspace/image_voting_system/all_images/夜泊牛渚怀古_nano.jpg,8
 /home/ubuntu/workspace/image_voting_system/all_images/天末怀李白_gpt.jpg,8
 /home/ubuntu/workspace/image_voting_system/all_images/天末怀李白_seedream.jpg,8
 /home/ubuntu/workspace/image_voting_system/all_images/宿桐庐江寄广陵旧游_mj.jpg,8
@@ -359,6 +360,7 @@ image_path,rating_count
 /home/ubuntu/workspace/image_voting_system/all_images/和张仆射塞下曲·其四_seedream.jpg,7
 /home/ubuntu/workspace/image_voting_system/all_images/咏怀古迹五首·其二_gpt.jpg,7
 /home/ubuntu/workspace/image_voting_system/all_images/哀江头_mj.jpg,7
+/home/ubuntu/workspace/image_voting_system/all_images/哀江头_nano.jpg,7
 /home/ubuntu/workspace/image_voting_system/all_images/哀王孙_mj.jpg,7
 /home/ubuntu/workspace/image_voting_system/all_images/夜上受降城闻笛_gpt.jpg,7
 /home/ubuntu/workspace/image_voting_system/all_images/奉和中书舍人贾至早朝大明宫_gpt.jpg,7
@@ -529,6 +531,7 @@ image_path,rating_count
 /home/ubuntu/workspace/image_voting_system/all_images/鹿柴_gpt.jpg,6
 /home/ubuntu/workspace/image_voting_system/all_images/乌衣巷_gpt.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/八月十五夜赠张功曹_nano.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/凉州词_gpt.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/凉州词_seedream.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/凉州词二首·其一_mj.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/出塞_nano.jpg,5
@@ -541,6 +544,7 @@ image_path,rating_count
 /home/ubuntu/workspace/image_voting_system/all_images/听弹琴_gpt.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/听筝_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/听董大弹胡笳声兼寄语弄房给事_seedream.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/听蜀僧濬弹琴_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/和晋陵陆丞早春游望_mj.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/哥舒歌_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/喜外弟卢纶见宿_mj.jpg,5
@@ -581,9 +585,11 @@ image_path,rating_count
 /home/ubuntu/workspace/image_voting_system/all_images/汉江临泛_gpt.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/清平调·其三_mj.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/渡荆门送别_nano.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/灞上秋居_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/玉台体_seedream.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/瑶瑟怨_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/留别王侍御维_mj.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/登鹳雀楼_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/白雪歌送武判官归京_mj.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/相思_gpt.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/相思_nano.jpg,5
@@ -592,13 +598,18 @@ image_path,rating_count
 /home/ubuntu/workspace/image_voting_system/all_images/章台夜思_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/终南别业_mj.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/终南山_seedream.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/自夏口至鹦鹉洲夕望岳阳寄源中丞_gpt.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/自夏口至鹦鹉洲夕望岳阳寄源中丞_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/至德二载甫自京金光门出间道归凤翔乾元初从左拾遗移华州掾与亲故别因出此门有悲往事_mj.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/芙蓉楼送辛渐_mj.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/芙蓉楼送辛渐_seedream.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/苏武庙_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/蜀先主庙_seedream.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/蜀道难_gpt.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/行经华山_gpt.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/行路难·其三_nano.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/西塞山怀古_mj.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/赋得暮雨送李胄_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/赋得暮雨送李胄_seedream.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/赤壁_gpt.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/走马川行奉送封大夫出师西征_nano.jpg,5
@@ -606,6 +617,7 @@ image_path,rating_count
 /home/ubuntu/workspace/image_voting_system/all_images/送别·下马饮君酒_mj.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/送别·下马饮君酒_seedream.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/送梓州李使君_mj.jpg,5
+/home/ubuntu/workspace/image_voting_system/all_images/遣怀_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/遣悲怀三首·其三_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/遣悲怀三首·其二_nano.jpg,5
 /home/ubuntu/workspace/image_voting_system/all_images/金陵酒肆留别_gpt.jpg,5
