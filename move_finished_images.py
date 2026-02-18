@@ -2,7 +2,7 @@
 """
 Move images listed in high_quality_data.xlsx from all_images to finished_rating_images.
 
-high_quality_data.xlsx must be in the same folder as this script (check-tb/).
+high_quality_data.xlsx must be in the same folder as this script.
 It must have an "image_path" column (e.g. /home/ubuntu/.../all_images/foo.jpg).
 
 --local:   Excel paths are from remote (.jpg). Local images are .png only.
@@ -16,8 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-# Excel lives in check-tb/ next to this script
-DEFAULT_EXCEL = SCRIPT_DIR / "check-tb" / "high_quality_data.xlsx"
+DEFAULT_EXCEL = SCRIPT_DIR / "high_quality_data.xlsx"
 DEFAULT_ALL_IMAGES = SCRIPT_DIR / "all_images"
 DEFAULT_FINISHED_DIR = SCRIPT_DIR / "finished_rating_images"
 
