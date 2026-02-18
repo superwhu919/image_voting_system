@@ -2,7 +2,8 @@
 """
 Move images listed in high_quality_data.xlsx from all_images to finished_rating_images.
 
-high_quality_data.xlsx must be in the same folder as this script.
+high_quality_data.xlsx is read from the current working directory by default
+(so run from project root: python move_finished_images.py).
 It must have an "image_path" column (e.g. /home/ubuntu/.../all_images/foo.jpg).
 
 --local:   Excel paths are from remote (.jpg). Local images are .png only.
@@ -16,7 +17,8 @@ from pathlib import Path
 import pandas as pd
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_EXCEL = SCRIPT_DIR / "high_quality_data.xlsx"
+# Default Excel: current working directory (run from project root)
+DEFAULT_EXCEL = Path.cwd() / "high_quality_data.xlsx"
 DEFAULT_ALL_IMAGES = SCRIPT_DIR / "all_images"
 DEFAULT_FINISHED_DIR = SCRIPT_DIR / "finished_rating_images"
 
@@ -82,7 +84,7 @@ def main():
         "--excel",
         type=Path,
         default=DEFAULT_EXCEL,
-        help=f"Path to high_quality_data.xlsx (default: {DEFAULT_EXCEL})",
+        help="Path to high_quality_data.xlsx (default: <cwd>/high_quality_data.xlsx)",
     )
     parser.add_argument(
         "-o",
